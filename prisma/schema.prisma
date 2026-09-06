@@ -1,0 +1,399 @@
+// Nitro2Tech S.A.S. — Software contable interno
+// Base de datos relacional (PostgreSQL / Neon) para garantizar la integridad
+// financiera de cada registro.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum TipoPersona {
+  NATURAL
+  JURIDICA
+}
+
+/// Tratamiento del IVA en Colombia. Una S.A.S. es responsable de IVA desde el
+/// primer peso facturado: no existe tope minimo.
+enum TratamientoIva {
+  GRAVADO_19 // Tarifa general: desarrollo, consultoria, automatizacion
+  GRAVADO_5 // Tarifa diferencial
+  EXENTO // Tarifa 0% con derecho a descontables (p. ej. exportacion de servicios)
+  EXCLUIDO // Fuera del ambito del IVA, sin derecho a descontables
+}
+
+/// Conceptos de retencion en la fuente a titulo de renta.
+enum ConceptoRetefuente {
+  NINGUNO
+  HONORARIOS // Consultoria y honorarios
+  SERVICIOS // Servicios generales
+  COMPRAS
+  ARRENDAMIENTO
+}
+
+enum CategoriaServicio {
+  DESARROLLO
+  AUTOMATIZACION
+  CONSULTORIA_DATOS
+  CLOUD
+  LICENCIAMIENTO_SAAS
+  SOPORTE
+  CAPACITACION
+  OTRO
+}
+
+enum EstadoFactura {
+  BORRADOR
+  EMITIDA
+  PARCIAL
+  PAGADA
+  VENCIDA
+  ANULADA
+}
+
+enum MetodoPago {
+  TRANSFERENCIA
+  EFECTIVO
+  TARJETA
+  PSE
+  NEQUI
+  DAVIPLATA
+  OTRO
+}
+
+enum CategoriaGasto {
+  SERVIDORES
+  APIS
+  DOMINIOS
+  SOFTWARE
+  MARKETING
+  NOMINA
+  HONORARIOS
+  BANCARIO
+  OFICINA
+  LEGAL_CONTABLE
+  IMPUESTOS
+  EQUIPOS
+  VIAJES
+  OTRO
+}
+
+enum Periodicidad {
+  MENSUAL
+  BIMESTRAL
+  TRIMESTRAL
+  CUATRIMESTRAL
+  SEMESTRAL
+  ANUAL
+}
+
+/// Movimientos de la cuenta corriente de cada socio.
+/// PRESTAMO y RETIRO aumentan la "cuenta por cobrar a socios";
+/// ABONO y DISTRIBUCION_UTILIDADES la disminuyen; APORTE_CAPITAL es patrimonio.
+enum TipoMovimientoSocio {
+  PRESTAMO
+  RETIRO
+  ABONO
+  APORTE_CAPITAL
+  DISTRIBUCION_UTILIDADES
+}
+
+// ---------------------------------------------------------------------------
+// Configuracion de la empresa
+// ---------------------------------------------------------------------------
+
+model Configuracion {
+  id          Int    @id @default(1)
+  razonSocial String @default("Nitro2Tech S.A.S.")
+  nit         String @default("")
+  direccion   String @default("")
+  ciudad      String @default("Bogota D.C.")
+  telefono    String @default("")
+  email       String @default("")
+
+  /// Valor de la UVT del anio en curso (COP).
+  valorUvt Decimal @default(49799) @db.Decimal(16, 2)
+
+  /// Periodicidad de la declaracion de IVA (bimestral si los ingresos brutos del
+  /// anio anterior fueron >= 92.000 UVT; cuatrimestral en caso contrario).
+  periodicidadIva Periodicidad @default(BIMESTRAL)
+
+  /// Tarifa de ICA de la empresa, expresada por mil (Bogota servicios ~ 9.66).
+  tarifaIcaPorMil Decimal @default(9.66) @db.Decimal(8, 4)
+
+  /// Tarifa del impuesto de renta para personas juridicas.
+  tarifaRenta Decimal @default(0.35) @db.Decimal(5, 4)
+
+  actualizadoEn DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Clientes
+// ---------------------------------------------------------------------------
+
+model Cliente {
+  id          String      @id @default(cuid())
+  nombre      String
+  nit         String      @default("")
+  tipoPersona TipoPersona @default(JURIDICA)
+
+  email     String @default("")
+  telefono  String @default("")
+  direccion String @default("")
+  ciudad    String @default("")
+  contacto  String @default("")
+
+  /// El cliente nos practica retencion en la fuente a titulo de renta.
+  practicaRetefuente Boolean @default(true)
+
+  /// El cliente es agente de retencion de IVA (nos retiene el 15% del IVA).
+  practicaReteIva Boolean @default(false)
+
+  /// El cliente nos practica retencion de ICA.
+  practicaReteIca Boolean @default(false)
+
+  /// Tarifa de ReteICA que aplica el cliente, por mil.
+  tarifaReteIcaPorMil Decimal @default(9.66) @db.Decimal(8, 4)
+
+  notas  String  @default("")
+  activo Boolean @default(true)
+
+  facturas Factura[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([nombre])
+}
+
+// ---------------------------------------------------------------------------
+// Catalogo de servicios / productos
+// ---------------------------------------------------------------------------
+
+model Servicio {
+  id          String            @id @default(cuid())
+  nombre      String
+  descripcion String            @default("")
+  categoria   CategoriaServicio @default(DESARROLLO)
+
+  precioBase Decimal @default(0) @db.Decimal(16, 2)
+
+  /// Tratamiento tributario por defecto al facturar este servicio.
+  tratamientoIva     TratamientoIva     @default(GRAVADO_19)
+  conceptoRetefuente ConceptoRetefuente @default(SERVICIOS)
+
+  activo Boolean @default(true)
+  notas  String  @default("")
+
+  items FacturaItem[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Facturacion (ingresos)
+// ---------------------------------------------------------------------------
+
+model Factura {
+  id     String @id @default(cuid())
+  numero String @unique
+
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id])
+
+  fechaEmision     DateTime
+  fechaVencimiento DateTime
+
+  estado EstadoFactura @default(EMITIDA)
+
+  /// Proyecto de desarrollo o automatizacion al que corresponde.
+  proyecto String @default("")
+  notas    String @default("")
+
+  // Totales calculados y persistidos para integridad historica: si cambian las
+  // tarifas o el catalogo, la factura emitida conserva sus cifras.
+  subtotal   Decimal @default(0) @db.Decimal(16, 2)
+  ivaTotal   Decimal @default(0) @db.Decimal(16, 2)
+  retefuente Decimal @default(0) @db.Decimal(16, 2)
+  reteIva    Decimal @default(0) @db.Decimal(16, 2)
+  reteIca    Decimal @default(0) @db.Decimal(16, 2)
+
+  /// subtotal + IVA (lo que documenta la factura).
+  total Decimal @default(0) @db.Decimal(16, 2)
+
+  /// total - retenciones (lo que el cliente efectivamente consigna).
+  netoACobrar Decimal @default(0) @db.Decimal(16, 2)
+
+  items FacturaItem[]
+  pagos Pago[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([clienteId])
+  @@index([fechaEmision])
+  @@index([estado])
+}
+
+model FacturaItem {
+  id        String  @id @default(cuid())
+  facturaId String
+  factura   Factura @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+
+  servicioId String?
+  servicio   Servicio? @relation(fields: [servicioId], references: [id])
+
+  descripcion    String
+  cantidad       Decimal @default(1) @db.Decimal(12, 3)
+  precioUnitario Decimal @default(0) @db.Decimal(16, 2)
+
+  tratamientoIva     TratamientoIva     @default(GRAVADO_19)
+  conceptoRetefuente ConceptoRetefuente @default(SERVICIOS)
+
+  /// Tarifas congeladas en el momento de emitir.
+  tasaIva        Decimal @default(0.19) @db.Decimal(5, 4)
+  tasaRetefuente Decimal @default(0.04) @db.Decimal(5, 4)
+
+  base     Decimal @default(0) @db.Decimal(16, 2)
+  ivaValor Decimal @default(0) @db.Decimal(16, 2)
+
+  orden Int @default(0)
+
+  @@index([facturaId])
+}
+
+model Pago {
+  id        String  @id @default(cuid())
+  facturaId String
+  factura   Factura @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+
+  fecha      DateTime
+  monto      Decimal    @db.Decimal(16, 2)
+  metodo     MetodoPago @default(TRANSFERENCIA)
+  referencia String     @default("")
+  notas      String     @default("")
+
+  creadoEn DateTime @default(now())
+
+  @@index([facturaId])
+  @@index([fecha])
+}
+
+// ---------------------------------------------------------------------------
+// Gastos operativos
+// ---------------------------------------------------------------------------
+
+model Gasto {
+  id        String   @id @default(cuid())
+  fecha     DateTime
+  concepto  String
+  proveedor String   @default("")
+
+  categoria CategoriaGasto @default(OTRO)
+
+  base     Decimal @default(0) @db.Decimal(16, 2)
+  tasaIva  Decimal @default(0) @db.Decimal(5, 4)
+  ivaValor Decimal @default(0) @db.Decimal(16, 2)
+  total    Decimal @default(0) @db.Decimal(16, 2)
+
+  /// El IVA pagado es descontable en la declaracion bimestral.
+  ivaDescontable Boolean @default(true)
+
+  /// El gasto es deducible del impuesto de renta.
+  deducible Boolean @default(true)
+
+  metodoPago MetodoPago @default(TRANSFERENCIA)
+  notas      String     @default("")
+
+  /// Gasto generado a partir de una plantilla de gasto fijo.
+  recurrenteId String?
+  recurrente   GastoRecurrente? @relation(fields: [recurrenteId], references: [id], onDelete: SetNull)
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([fecha])
+  @@index([categoria])
+  @@index([recurrenteId])
+}
+
+/// Plantilla de gasto fijo mensual (servidores, APIs, dominios, marketing...).
+model GastoRecurrente {
+  id        String         @id @default(cuid())
+  concepto  String
+  proveedor String         @default("")
+  categoria CategoriaGasto @default(SERVIDORES)
+
+  base    Decimal @default(0) @db.Decimal(16, 2)
+  tasaIva Decimal @default(0) @db.Decimal(5, 4)
+
+  ivaDescontable Boolean @default(true)
+  deducible      Boolean @default(true)
+
+  periodicidad Periodicidad @default(MENSUAL)
+
+  /// Dia del mes en que se cobra.
+  diaCobro Int @default(1)
+
+  fechaInicio DateTime
+  fechaFin    DateTime?
+  activo      Boolean   @default(true)
+  notas       String    @default("")
+
+  gastos Gasto[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Socios — cuentas por cobrar a socios
+// ---------------------------------------------------------------------------
+
+model Socio {
+  id        String @id @default(cuid())
+  nombre    String
+  documento String @default("")
+  email     String @default("")
+  telefono  String @default("")
+
+  /// Participacion en el capital social (0-1).
+  participacion Decimal @default(0.5) @db.Decimal(5, 4)
+
+  activo Boolean @default(true)
+  notas  String  @default("")
+
+  movimientos MovimientoSocio[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+}
+
+model MovimientoSocio {
+  id      String @id @default(cuid())
+  socioId String
+  socio   Socio  @relation(fields: [socioId], references: [id], onDelete: Cascade)
+
+  fecha    DateTime
+  tipo     TipoMovimientoSocio
+  monto    Decimal             @db.Decimal(16, 2)
+  concepto String
+  notas    String              @default("")
+
+  /// Fecha pactada de devolucion, para prestamos.
+  fechaCompromiso DateTime?
+
+  creadoEn DateTime @default(now())
+
+  @@index([socioId])
+  @@index([fecha])
+}

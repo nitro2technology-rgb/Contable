@@ -1,0 +1,220 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Paleta
+   Los colores se definen una sola vez como variables CSS y se intercambian por
+   tema. Las utilidades de Tailwind apuntan a la variable, no al hex, asi que
+   ningun componente necesita variantes `dark:` para color.
+   --------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-2: #f2f1ed;
+  --surface-3: #e9e8e2;
+
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-muted: #898781;
+
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --edge: rgba(11, 11, 11, 0.1);
+  --edge-strong: rgba(11, 11, 11, 0.18);
+
+  /* Categoricos, en orden fijo. Nunca se ciclan ni se generan hues nuevos. */
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #eda100;
+  --s5: #e87ba4;
+  --s6: #008300;
+  --s7: #4a3aa7;
+  --s8: #e34948;
+
+  /* Rampa secuencial (azul). */
+  --seq-100: #cde2fb;
+  --seq-250: #86b6ef;
+  --seq-400: #3987e5;
+  --seq-550: #1c5cab;
+  --seq-700: #0d366b;
+
+  /* Estado — nunca se tematizan ni se reutilizan como serie. */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --good-text: #006300;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #232322;
+    --surface-3: #2c2c2a;
+
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-muted: #898781;
+
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --edge: rgba(255, 255, 255, 0.1);
+    --edge-strong: rgba(255, 255, 255, 0.18);
+
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --s4: #c98500;
+    --s5: #d55181;
+    --s6: #008300;
+    --s7: #9085e9;
+    --s8: #e66767;
+
+    --seq-100: #0d366b;
+    --seq-250: #184f95;
+    --seq-400: #2a78d6;
+    --seq-550: #5598e7;
+    --seq-700: #9ec5f4;
+
+    --good-text: #0ca30c;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #232322;
+  --surface-3: #2c2c2a;
+
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-muted: #898781;
+
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --edge: rgba(255, 255, 255, 0.1);
+  --edge-strong: rgba(255, 255, 255, 0.18);
+
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #c98500;
+  --s5: #d55181;
+  --s6: #008300;
+  --s7: #9085e9;
+  --s8: #e66767;
+
+  --seq-100: #0d366b;
+  --seq-250: #184f95;
+  --seq-400: #2a78d6;
+  --seq-550: #5598e7;
+  --seq-700: #9ec5f4;
+
+  --good-text: #0ca30c;
+}
+
+@theme inline {
+  --color-plane: var(--plane);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-muted: var(--ink-muted);
+
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+  --color-edge: var(--edge);
+  --color-edge-strong: var(--edge-strong);
+
+  --color-s1: var(--s1);
+  --color-s2: var(--s2);
+  --color-s3: var(--s3);
+  --color-s4: var(--s4);
+  --color-s5: var(--s5);
+  --color-s6: var(--s6);
+  --color-s7: var(--s7);
+  --color-s8: var(--s8);
+
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --color-good-text: var(--good-text);
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+
+* {
+  border-color: var(--edge);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+body {
+  background: var(--plane);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--seq-250);
+  color: var(--ink);
+}
+
+/* Anillo de foco visible y consistente en todos los controles. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--s1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Columnas de cifras alineadas verticalmente. Las cifras grandes y sueltas
+   (heroe, valor de un stat tile) usan figuras proporcionales a proposito. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Barra de desplazamiento discreta. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 999px;
+  border: 3px solid var(--plane);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--axis);
+}
+
+/* Recharts: el contenedor responsivo necesita altura explicita del padre. */
+.recharts-surface {
+  overflow: visible;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
