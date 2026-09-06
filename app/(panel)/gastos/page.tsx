@@ -94,6 +94,7 @@ export default async function PaginaGastos({
             <BarrasHorizontales
               datos={porCategoria.map((c) => ({ nombre: humanizar(c.categoria), valor: c.valor }))}
               etiquetaSerie="Gasto"
+              vacio="Aún no hay gastos registrados este año."
             />
           </ChartCard>
         </div>

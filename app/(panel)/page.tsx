@@ -110,17 +110,26 @@ export default async function Panel({
                 </span>
               }
             />
-            <div className="mt-5 space-y-3">
-              <Meter
-                etiqueta="Gastos sobre ingresos"
-                valor={resumen.gastos}
-                limite={resumen.ingresos || 1}
-                nota={
-                  resumen.ingresos > 0
-                    ? `Cada $100 facturados cuestan $${Math.round((resumen.gastos / resumen.ingresos) * 100)} en operación.`
-                    : "Aún no hay ingresos registrados en el año."
-                }
-              />
+            {/* El medidor necesita un límite real: sin ingresos, la razón
+                gasto/ingreso no existe y dibujarla con un divisor de emergencia
+                mostraría una barra que no significa nada. */}
+            <div className="mt-5">
+              {resumen.ingresos > 0 ? (
+                <Meter
+                  etiqueta="Gastos sobre ingresos"
+                  valor={resumen.gastos}
+                  limite={resumen.ingresos}
+                  nota={`Cada $100 facturados cuestan $${Math.round((resumen.gastos / resumen.ingresos) * 100)} en operación.`}
+                />
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  Aún no hay ingresos registrados en {anio}. Empieza por{" "}
+                  <Link href="/clientes" className="text-s1 underline-offset-2 hover:underline">
+                    crear un cliente
+                  </Link>{" "}
+                  y emitirle una factura.
+                </p>
+              )}
             </div>
           </div>
 
@@ -276,6 +285,7 @@ export default async function Panel({
           <BarrasHorizontales
             datos={porCliente.map((c) => ({ nombre: c.nombre, valor: c.valor }))}
             etiquetaSerie="Facturado"
+            vacio="Aún no le has facturado a ningún cliente este año."
           />
         </ChartCard>
 
@@ -288,6 +298,7 @@ export default async function Panel({
           <BarrasHorizontales
             datos={porCategoria.map((c) => ({ nombre: humanizar(c.categoria), valor: c.valor }))}
             etiquetaSerie="Gasto"
+            vacio="Aún no hay gastos registrados este año."
           />
         </ChartCard>
       </div>

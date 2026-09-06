@@ -82,6 +82,18 @@ function LeyendaContenido({
 }
 
 /**
+ * Un grafico sin datos no debe quedarse como una caja con rejilla y nada
+ * dentro: el lector no distingue "no hay nada" de "no cargo". Se dice.
+ */
+function SinDatos({ mensaje }: { mensaje: string }) {
+  return (
+    <div className="flex h-full min-h-[160px] items-center justify-center px-6 text-center">
+      <p className="max-w-xs text-sm text-ink-muted">{mensaje}</p>
+    </div>
+  );
+}
+
+/**
  * Envoltura con alternador grafico/tabla. La vista de tabla es el canal de
  * respaldo exigido por la revision de accesibilidad: ningun valor queda
  * disponible solo a traves del color.
@@ -174,6 +186,13 @@ export type PuntoFlujo = {
 };
 
 export function FlujoCajaChart({ datos }: { datos: PuntoFlujo[] }) {
+  const hayMovimiento = datos.some((p) => p.ingresos !== 0 || p.gastos !== 0);
+  if (!hayMovimiento) {
+    return (
+      <SinDatos mensaje="Sin movimiento este año. En cuanto emitas una factura o registres un gasto, aquí verás la evolución mes a mes." />
+    );
+  }
+
   return (
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart data={datos} margin={{ top: 8, right: 8, bottom: 0, left: 8 }} barGap={2}>
@@ -237,10 +256,16 @@ export type BarraH = { nombre: string; valor: number };
 export function BarrasHorizontales({
   datos,
   etiquetaSerie,
+  vacio,
 }: {
   datos: BarraH[];
   etiquetaSerie: string;
+  vacio?: string;
 }) {
+  if (datos.length === 0) {
+    return <SinDatos mensaje={vacio ?? "Todavía no hay datos en este periodo."} />;
+  }
+
   // La magnitud ya la lleva la longitud de la barra; el tono la refuerza en el
   // mismo orden. Un solo tono, sin arcoiris.
   const paso = (i: number) => RAMPA[Math.min(i, RAMPA.length - 1)];
