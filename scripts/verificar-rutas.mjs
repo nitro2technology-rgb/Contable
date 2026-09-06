@@ -13,7 +13,7 @@
  * Requiere DATABASE_URL, DIRECT_URL, APP_PASSWORD y AUTH_SECRET en .env.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as esperar } from "node:timers/promises";
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -119,10 +119,40 @@ async function main() {
     console.log(fallos === 0 ? "\nTodas las rutas responden." : `\n${fallos} rutas fallaron.`);
     process.exitCode = fallos === 0 ? 0 : 1;
   } finally {
+    detener(servidor);
+  }
+}
+
+/**
+ * En Windows `kill()` mata al lanzador de npx pero deja vivo al `next start`
+ * que cuelga de él. Ese huérfano se queda con el puerto y con el motor de
+ * Prisma bloqueado, lo que rompe el siguiente `prisma generate` con un EPERM
+ * que no tiene nada que ver con la causa real. Hay que matar el árbol entero y
+ * esperar a que el sistema lo confirme.
+ */
+function detener(servidor) {
+  if (process.platform !== "win32") {
     servidor.kill();
-    // En Windows `kill` no siempre alcanza al proceso hijo de npx.
-    if (process.platform === "win32" && servidor.pid) {
-      spawn("taskkill", ["/pid", String(servidor.pid), "/f", "/t"], { stdio: "ignore" });
+    return;
+  }
+
+  if (servidor.pid) {
+    // /t incluye los descendientes; /f fuerza. Síncrono para que el proceso no
+    // termine antes de que el árbol esté realmente muerto.
+    spawnSync("taskkill", ["/pid", String(servidor.pid), "/f", "/t"], { stdio: "ignore" });
+  }
+
+  // Red de seguridad: si algo quedó escuchando el puerto, se cierra por puerto.
+  const netstat = spawnSync("netstat", ["-ano"], { encoding: "utf8" });
+  if (netstat.stdout) {
+    const huerfanos = new Set();
+    for (const linea of netstat.stdout.split("\n")) {
+      if (!linea.includes("LISTENING") || !linea.includes(`:${PUERTO} `)) continue;
+      const pid = linea.trim().split(/\s+/).pop();
+      if (pid && pid !== "0") huerfanos.add(pid);
+    }
+    for (const pid of huerfanos) {
+      spawnSync("taskkill", ["/pid", pid, "/f", "/t"], { stdio: "ignore" });
     }
   }
 }
