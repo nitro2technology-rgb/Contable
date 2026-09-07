@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  AlertTriangle,
   ArrowRight,
   CircleCheck,
   Clock,
@@ -88,8 +87,6 @@ export default async function Panel({
     saldoCaja(),
   ]);
 
-  // El saldo del socio es negativo cuando debe; la deuda es su valor absoluto.
-  const deudaSocios = socios.reduce((a, s) => a + Math.max(-s.saldo, 0), 0);
   const periodoIvaVigente = periodosIvaAnio.find((p) => p.vigente) ?? periodosIvaAnio.at(-1);
 
   const hoy = new Date();
@@ -178,84 +175,82 @@ export default async function Panel({
         </div>
       </Card>
 
-      {/* --- Saldo: el dinero que hay, no el que se ganó ------------------- */}
-      <Card className="mb-5">
-        <div className="grid gap-6 p-5 sm:grid-cols-[minmax(0,280px)_1fr] sm:gap-10 lg:p-6">
-          <div>
-            <p className="text-xs font-medium text-ink-2">Saldo actual</p>
-            <p
-              className={`mt-1 text-3xl font-semibold tracking-tight ${
-                caja.saldoOperativo >= 0 ? "text-ink" : "text-critical"
-              }`}
-            >
-              {money(caja.saldoOperativo)}
-            </p>
-            <p className="mt-1 text-xs text-ink-muted">
-              Cobrado − Gastos, desde el inicio. El dinero no se reinicia cada año, así que esta
-              cifra no depende del filtro.
-            </p>
-          </div>
+      {/* --- Saldo: el dinero que hay, no el que se ganó -------------------
+          La relación entre las cifras se expresa con las tarjetas y los signos
+          que las separan, no con un párrafo que explique la resta. */}
+      <div className="mb-5 grid items-stretch gap-3 lg:grid-cols-[minmax(0,1.6fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <Card className="p-5">
+          <p className="text-xs font-medium text-ink-2">Disponible</p>
+          <p
+            className={`mt-1 text-4xl font-semibold tracking-tight ${
+              caja.saldoDisponible >= 0 ? "text-ink" : "text-critical"
+            }`}
+          >
+            {money(caja.saldoDisponible)}
+          </p>
+          <p className="mt-1 text-xs text-ink-muted">En la cuenta, hoy</p>
+        </Card>
 
-          <dl className="space-y-2.5 text-sm">
-            <div className="flex justify-between gap-3">
-              <dt className="text-ink-2">Cobrado a clientes</dt>
-              <dd className="tabular text-good-text">+{money(caja.cobrado)}</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-ink-2">Gastos pagados, IVA incluido</dt>
-              <dd className="tabular text-critical">−{money(caja.egresos)}</dd>
-            </div>
-            <div className="flex justify-between gap-3 border-t border-edge pt-2.5">
-              <dt className="font-medium text-ink">Saldo</dt>
-              <dd className="tabular font-semibold text-ink">{money(caja.saldoOperativo)}</dd>
-            </div>
-
-            {/* Los socios mueven caja sin pasar por la utilidad: un préstamo sale
-                de la cuenta y no es gasto. Se muestra aparte para no alterar la
-                fórmula pedida, pero sin esconder que el banco tiene menos. */}
-            {caja.movimientosSocios !== 0 ? (
-              <>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-ink-2">Movimientos de socios</dt>
-                  <dd
-                    className={`tabular ${
-                      caja.movimientosSocios < 0 ? "text-critical" : "text-good-text"
-                    }`}
-                  >
-                    {caja.movimientosSocios < 0 ? "−" : "+"}
-                    {money(Math.abs(caja.movimientosSocios))}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3 border-t border-edge pt-2.5">
-                  <dt className="font-medium text-ink">Disponible de verdad</dt>
-                  <dd className="tabular text-lg font-semibold text-ink">
-                    {money(caja.saldoDisponible)}
-                  </dd>
-                </div>
-              </>
-            ) : null}
-          </dl>
+        <div className="flex items-center justify-center text-2xl font-light text-ink-muted lg:px-1">
+          +
         </div>
 
-        {caja.movimientosSocios !== 0 ? (
-          <div className="border-t border-edge px-5 py-3 lg:px-6">
-            <p className="flex gap-2 text-xs text-ink-2">
-              <Info className="mt-0.5 size-3.5 shrink-0 text-s1" aria-hidden="true" />
-              <span>
-                Préstamos, retiros y utilidades repartidas salen de la cuenta sin ser gasto, y los
-                aportes entran sin ser ingreso. Por eso el saldo real difiere de{" "}
-                <em>Cobrado − Gastos</em>.{" "}
-                <Link href="/socios" className="text-s1 underline-offset-2 hover:underline">
-                  Ver socios
-                </Link>
-              </span>
+        <Link href="/socios" className="block">
+          <Card className="h-full p-5 transition-colors hover:bg-surface-2">
+            <p className="text-xs font-medium text-ink-2">Por cobrar a socios</p>
+            <p
+              className={`mt-1 text-2xl font-semibold tracking-tight ${
+                caja.deudaSocios > 0 ? "text-critical" : "text-ink-muted"
+              }`}
+            >
+              {money(caja.deudaSocios)}
             </p>
-          </div>
-        ) : null}
-      </Card>
+            <p className="mt-1 text-xs text-ink-muted">Préstamos sin devolver</p>
+          </Card>
+        </Link>
+
+        <div className="flex items-center justify-center text-2xl font-light text-ink-muted lg:px-1">
+          =
+        </div>
+
+        <Card className="p-5">
+          <p className="text-xs font-medium text-ink-2">Saldo</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight text-ink">
+            {money(caja.saldoOperativo)}
+          </p>
+          <p className="mt-1 text-xs text-ink-muted">
+            {moneyCompact(caja.cobrado)} cobrado − {moneyCompact(caja.egresos)} gastos
+          </p>
+        </Card>
+      </div>
+
+      {/* Las utilidades repartidas y los aportes también mueven la caja, pero
+          casi nunca existen a la vez que un préstamo; solo aparecen si los hay,
+          para no llenar la fila de ceros. */}
+      {caja.repartidoSocios > 0 || caja.aportadoSocios > 0 ? (
+        <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {caja.repartidoSocios > 0 ? (
+            <StatTile
+              etiqueta="Repartido en utilidades"
+              valor={caja.repartidoSocios}
+              nota="Salió de la caja y no vuelve"
+              subirEsBueno={false}
+              acento="var(--s5)"
+            />
+          ) : null}
+          {caja.aportadoSocios > 0 ? (
+            <StatTile
+              etiqueta="Aportes de socios"
+              valor={caja.aportadoSocios}
+              nota="Entró a la caja como capital"
+              acento="var(--s3)"
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {/* --- Avisos ------------------------------------------------------- */}
-      <div className="mb-5 grid gap-4 lg:grid-cols-3">
+      <div className="mb-5 grid gap-4 lg:grid-cols-2">
         <Card className="p-4">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-s1/10 text-s1">
@@ -312,37 +307,6 @@ export default async function Panel({
           </div>
         </Card>
 
-        <Card className="p-4">
-          <div className="flex items-start gap-3">
-            <span
-              className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${
-                deudaSocios > 0 ? "bg-warning/15 text-ink" : "bg-surface-2 text-ink-muted"
-              }`}
-            >
-              {deudaSocios > 0 ? (
-                <AlertTriangle className="size-4" aria-hidden="true" />
-              ) : (
-                <CircleCheck className="size-4" aria-hidden="true" />
-              )}
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-ink-2">Cuentas por cobrar a socios</p>
-              <p className="mt-0.5 text-lg font-semibold tabular text-ink">{money(deudaSocios)}</p>
-              <p className="mt-0.5 text-xs text-ink-muted">
-                {deudaSocios > 0 ? (
-                  <>
-                    Se cruza contra utilidades futuras.{" "}
-                    <Link href="/socios" className="text-s1 underline-offset-2 hover:underline">
-                      Ver socios
-                    </Link>
-                  </>
-                ) : (
-                  "Ningún socio tiene saldo pendiente."
-                )}
-              </p>
-            </div>
-          </div>
-        </Card>
       </div>
 
       {/* --- Gráficos ------------------------------------------------------ */}

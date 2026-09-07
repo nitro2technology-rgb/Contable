@@ -378,6 +378,18 @@ export type SaldoCaja = {
   movimientosSocios: number;
   /** Saldo operativo ajustado por lo que entro o salio por cuenta de los socios. */
   saldoDisponible: number;
+
+  // Descomposicion exacta de la diferencia entre el saldo y lo disponible.
+  // Se cumple siempre: saldoOperativo - saldoDisponible = deudaSocios +
+  // repartidoSocios - aportadoSocios. Se calcula sobre el neto (prestado menos
+  // abonado) y no sobre la deuda de cada socio por separado, porque redondear a
+  // cero los saldos a favor romperia la igualdad.
+  /** Prestado menos devuelto: lo que esta afuera y deberia volver. */
+  deudaSocios: number;
+  /** Utilidades repartidas: salieron y no vuelven. */
+  repartidoSocios: number;
+  /** Capital aportado por los socios: entro a la caja. */
+  aportadoSocios: number;
 };
 
 /**
@@ -401,24 +413,34 @@ export async function saldoCaja(): Promise<SaldoCaja> {
   const egresos = num(gastos._sum.total);
 
   // Los honorarios ya son un gasto, asi que no se cuentan otra vez aqui.
-  let movimientosSocios = 0;
+  let prestado = 0;
+  let abonado = 0;
+  let repartidoSocios = 0;
+  let aportadoSocios = 0;
+
   for (const m of movimientos) {
     const v = num(m._sum.monto);
     switch (m.tipo) {
       case "PRESTAMO":
       case "RETIRO":
-      case "DISTRIBUCION_UTILIDADES":
-        movimientosSocios -= v;
+        prestado += v;
         break;
       case "ABONO":
+        abonado += v;
+        break;
+      case "DISTRIBUCION_UTILIDADES":
+        repartidoSocios += v;
+        break;
       case "APORTE_CAPITAL":
-        movimientosSocios += v;
+        aportadoSocios += v;
         break;
       case "HONORARIOS":
         break;
     }
   }
 
+  const deudaSocios = prestado - abonado;
+  const movimientosSocios = aportadoSocios - repartidoSocios - deudaSocios;
   const saldoOperativo = cobrado - egresos;
 
   return {
@@ -427,6 +449,9 @@ export async function saldoCaja(): Promise<SaldoCaja> {
     saldoOperativo,
     movimientosSocios,
     saldoDisponible: saldoOperativo + movimientosSocios,
+    deudaSocios,
+    repartidoSocios,
+    aportadoSocios,
   };
 }
 
