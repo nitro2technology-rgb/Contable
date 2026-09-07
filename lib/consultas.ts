@@ -362,6 +362,74 @@ export async function repartoPorProyecto(anio?: number): Promise<RepartoProyecto
 }
 
 
+
+// ---------------------------------------------------------------------------
+// Saldo — el dinero que hay, no el que se gano
+// ---------------------------------------------------------------------------
+
+export type SaldoCaja = {
+  /** Todo lo que han pagado los clientes, historico. */
+  cobrado: number;
+  /** Todo lo pagado en gastos, IVA incluido: es plata que salio de verdad. */
+  egresos: number;
+  /** Cobrado - Gastos. */
+  saldoOperativo: number;
+  /** Efecto neto de los movimientos de socios sobre la caja (negativo la vacia). */
+  movimientosSocios: number;
+  /** Saldo operativo ajustado por lo que entro o salio por cuenta de los socios. */
+  saldoDisponible: number;
+};
+
+/**
+ * Cuanto dinero hay, que no es lo mismo que cuanto se ha ganado.
+ *
+ * La utilidad usa la base facturada sin IVA y no le importa si el cliente pago.
+ * La caja usa lo efectivamente cobrado y lo efectivamente pagado, IVA incluido:
+ * el IVA de un gasto sale de la cuenta aunque luego se descuente, y el IVA que
+ * cobra un cliente entra aunque se le deba a la DIAN.
+ *
+ * Es historico a proposito: el dinero no se reinicia el 1 de enero.
+ */
+export async function saldoCaja(): Promise<SaldoCaja> {
+  const [pagos, gastos, movimientos] = await Promise.all([
+    prisma.pago.aggregate({ _sum: { monto: true } }),
+    prisma.gasto.aggregate({ _sum: { total: true } }),
+    prisma.movimientoSocio.groupBy({ by: ["tipo"], _sum: { monto: true } }),
+  ]);
+
+  const cobrado = num(pagos._sum.monto);
+  const egresos = num(gastos._sum.total);
+
+  // Los honorarios ya son un gasto, asi que no se cuentan otra vez aqui.
+  let movimientosSocios = 0;
+  for (const m of movimientos) {
+    const v = num(m._sum.monto);
+    switch (m.tipo) {
+      case "PRESTAMO":
+      case "RETIRO":
+      case "DISTRIBUCION_UTILIDADES":
+        movimientosSocios -= v;
+        break;
+      case "ABONO":
+      case "APORTE_CAPITAL":
+        movimientosSocios += v;
+        break;
+      case "HONORARIOS":
+        break;
+    }
+  }
+
+  const saldoOperativo = cobrado - egresos;
+
+  return {
+    cobrado,
+    egresos,
+    saldoOperativo,
+    movimientosSocios,
+    saldoDisponible: saldoOperativo + movimientosSocios,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Suscripciones — ingreso recurrente
 // ---------------------------------------------------------------------------

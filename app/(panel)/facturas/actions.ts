@@ -6,8 +6,8 @@ import type { ConceptoRetefuente, TratamientoIva } from "@prisma/client";
 import type { EstadoAccion } from "@/components/dialog";
 import { num, prisma } from "@/lib/db";
 import { obtenerConfig } from "@/lib/consultas";
-import { calcularComision, calcularFactura, IVA_COMISION, type LineaCalculo } from "@/lib/fiscal";
-import { dinero, exito, fallo, fechaDe, opcion, texto } from "@/lib/formulario";
+import { calcularFactura, IVA_COMISION, redondearPeso, type LineaCalculo } from "@/lib/fiscal";
+import { booleano, dinero, exito, fallo, fechaDe, opcion, texto } from "@/lib/formulario";
 
 const METODOS = [
   "TRANSFERENCIA",
@@ -186,23 +186,29 @@ export async function registrarPago(
   // La comision de la pasarela no reduce lo que abona el cliente a la factura:
   // el cliente pago el monto completo. Reduce lo que llega a la cuenta, y eso
   // es un gasto financiero de la empresa.
+  //
+  // La cifra la escribe la persona, no la calcula el sistema: la liquidacion
+  // real de una pasarela rara vez coincide al peso con su porcentaje nominal, y
+  // lo que debe quedar registrado es lo que de verdad descontaron. El
+  // porcentaje configurado solo sirve para proponer un valor en el formulario.
   const pasarelaId = texto(d, "pasarelaId") || null;
-  let comision = 0;
-  let comisionIva = 0;
+  const comision = dinero(d, "comision");
+  const comisionTieneIva = booleano(d, "comisionTieneIva");
+  const comisionIva = comisionTieneIva ? redondearPeso(comision * IVA_COMISION) : 0;
+
+  if (comision < 0) return fallo("La comisión no puede ser negativa.");
+  if (comision + comisionIva >= monto) {
+    return fallo("La comisión no puede igualar ni superar el monto del pago.");
+  }
+
   let nombrePasarela = "";
-
   if (pasarelaId) {
-    const pasarela = await prisma.pasarelaPago.findUnique({ where: { id: pasarelaId } });
-    if (!pasarela) return fallo("La pasarela seleccionada ya no existe.");
-
-    nombrePasarela = pasarela.nombre;
-    const calculo = calcularComision(monto, {
-      porcentaje: num(pasarela.porcentaje),
-      fijo: num(pasarela.fijo),
-      comisionTieneIva: pasarela.comisionTieneIva,
+    const pasarela = await prisma.pasarelaPago.findUnique({
+      where: { id: pasarelaId },
+      select: { nombre: true },
     });
-    comision = calculo.comision;
-    comisionIva = calculo.comisionIva;
+    if (!pasarela) return fallo("La pasarela seleccionada ya no existe.");
+    nombrePasarela = pasarela.nombre;
   }
 
   const fecha = fechaDe(d, "fecha");
@@ -229,8 +235,10 @@ export async function registrarPago(
       await tx.gasto.create({
         data: {
           fecha,
-          concepto: `Comisión ${nombrePasarela} — ${factura.numero}`,
-          proveedor: nombrePasarela,
+          concepto: nombrePasarela
+            ? `Comisión ${nombrePasarela} — ${factura.numero}`
+            : `Comisión de pago — ${factura.numero}`,
+          proveedor: nombrePasarela || "Pasarela de pago",
           categoria: "BANCARIO",
           base: comision,
           tasaIva: comisionIva > 0 ? IVA_COMISION : 0,

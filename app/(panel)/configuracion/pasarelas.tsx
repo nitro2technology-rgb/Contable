@@ -53,7 +53,7 @@ function DialogoPasarela({
         )
       }
       titulo={p ? "Editar pasarela" : "Nueva pasarela de pago"}
-      descripcion="La comisión se descuenta al registrar cada pago y queda como gasto financiero."
+      descripcion="Su tarifa propone la comisión al registrar un pago; la cifra final siempre la escribes tú."
       accion={accion}
       estado={estado}
     >
@@ -106,7 +106,7 @@ function DialogoPasarela({
 
       <div className="mt-4 rounded-lg bg-surface-2 px-4 py-3 text-sm">
         <p className="mb-2 text-xs font-medium text-ink-2">
-          Si un cliente paga {money(EJEMPLO)} por esta vía:
+          Comisión que se propondrá para un cobro de {money(EJEMPLO)}:
         </p>
         <div className="flex justify-between gap-3">
           <span className="text-ink-2">Comisión</span>
@@ -139,14 +139,14 @@ export function Pasarelas({ pasarelas }: { pasarelas: PasarelaForm[] }) {
     <Card>
       <CardHeader
         titulo="Pasarelas de pago"
-        descripcion="Su comisión se descuenta al registrar un pago y se registra como gasto"
+        descripcion="Su tarifa propone la comisión al cobrar; el valor definitivo se escribe en cada pago"
         accion={<DialogoPasarela />}
       />
 
       {pasarelas.length === 0 ? (
         <EmptyState
           titulo="Sin pasarelas configuradas"
-          descripcion="Registra Wompi, PayU o la que uses con su porcentaje de comisión. Al cobrar por ellas, el sistema descuenta lo que se quedan y lo contabiliza."
+          descripcion="Registra Wompi, PayU o la que uses con su tarifa. Al cobrar, el formulario propondrá esa comisión y podrás ajustarla a lo que realmente descontaron."
         >
           <DialogoPasarela />
         </EmptyState>
@@ -209,7 +209,9 @@ export function Pasarelas({ pasarelas }: { pasarelas: PasarelaForm[] }) {
           <Info className="mt-0.5 size-3.5 shrink-0 text-s1" aria-hidden="true" />
           <span>
             La comisión no reduce lo que el cliente abona a su factura: él pagó el total. Reduce lo
-            que llega a la cuenta, y esa diferencia es un gasto financiero de la empresa.
+            que llega a la cuenta, y esa diferencia es un gasto financiero. Al registrar cada pago
+            escribes el valor exacto que descontaron y si venía gravado con IVA o exento — la
+            liquidación real rara vez coincide al peso con la tarifa nominal.
           </span>
         </p>
       </div>
