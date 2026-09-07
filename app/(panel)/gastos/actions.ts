@@ -29,6 +29,20 @@ function datosGasto(d: FormData) {
   };
 }
 
+/**
+ * Los gastos que nacen de unos honorarios de socio se administran desde el
+ * modulo de socios. Editarlos o borrarlos aqui dejaria el movimiento del socio
+ * y el gasto diciendo cosas distintas, asi que se bloquea tambien en el
+ * servidor: ocultar el boton no es una defensa.
+ */
+async function esDeSocio(id: string): Promise<boolean> {
+  const g = await prisma.gasto.findUnique({
+    where: { id },
+    select: { movimientoSocioId: true },
+  });
+  return Boolean(g?.movimientoSocioId);
+}
+
 export async function guardarGasto(_estado: EstadoAccion, d: FormData): Promise<EstadoAccion> {
   const datos = datosGasto(d);
 
@@ -36,6 +50,10 @@ export async function guardarGasto(_estado: EstadoAccion, d: FormData): Promise<
   if (datos.base <= 0) return fallo("El valor del gasto debe ser mayor que cero.");
 
   const id = texto(d, "id");
+
+  if (id && (await esDeSocio(id))) {
+    return fallo("Este gasto viene de unos honorarios de socio. Edítalo desde el módulo de Socios.");
+  }
 
   try {
     if (id) await prisma.gasto.update({ where: { id }, data: datos });
@@ -51,6 +69,8 @@ export async function guardarGasto(_estado: EstadoAccion, d: FormData): Promise<
 }
 
 export async function eliminarGasto(id: string) {
+  if (await esDeSocio(id)) return;
+
   await prisma.gasto.delete({ where: { id } });
   revalidatePath("/gastos");
   revalidatePath("/");

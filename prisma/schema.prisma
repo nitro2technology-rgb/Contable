@@ -96,12 +96,18 @@ enum Periodicidad {
 }
 
 /// Movimientos de la cuenta corriente de cada socio.
-/// PRESTAMO y RETIRO aumentan la "cuenta por cobrar a socios";
-/// ABONO y DISTRIBUCION_UTILIDADES la disminuyen; APORTE_CAPITAL es patrimonio.
+///
+/// Solo PRESTAMO y RETIRO generan deuda, y solo ABONO la salda. Ni los
+/// honorarios ni el reparto de utilidades tocan esa deuda: son conceptos
+/// distintos y cruzarlos automaticamente ocultaba lo que cada socio debe.
+///
+/// HONORARIOS es el unico que ademas es GASTO de la empresa: retribuye trabajo
+/// realizado. DISTRIBUCION_UTILIDADES y APORTE_CAPITAL son patrimonio, no gasto.
 enum TipoMovimientoSocio {
   PRESTAMO
   RETIRO
   ABONO
+  HONORARIOS
   APORTE_CAPITAL
   DISTRIBUCION_UTILIDADES
 }
@@ -236,6 +242,9 @@ model Factura {
   items FacturaItem[]
   pagos Pago[]
 
+  /// Honorarios de socios repartidos con cargo a esta factura.
+  movimientosSocios MovimientoSocio[]
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -318,6 +327,11 @@ model Gasto {
   recurrenteId String?
   recurrente   GastoRecurrente? @relation(fields: [recurrenteId], references: [id], onDelete: SetNull)
 
+  /// Gasto generado por unos honorarios de socio. Se administra desde el modulo
+  /// de socios, no desde el de gastos, para que ambos no se contradigan.
+  movimientoSocioId String?          @unique
+  movimientoSocio   MovimientoSocio? @relation(fields: [movimientoSocioId], references: [id], onDelete: Cascade)
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -392,8 +406,17 @@ model MovimientoSocio {
   /// Fecha pactada de devolucion, para prestamos.
   fechaCompromiso DateTime?
 
+  /// Factura del proyecto que se esta repartiendo, en los honorarios.
+  facturaId String?
+  factura   Factura? @relation(fields: [facturaId], references: [id], onDelete: SetNull)
+
+  /// Gasto que genera este movimiento. Solo lo tienen los honorarios; se borra
+  /// con el movimiento para que no queden gastos sin origen.
+  gasto Gasto?
+
   creadoEn DateTime @default(now())
 
   @@index([socioId])
   @@index([fecha])
+  @@index([facturaId])
 }

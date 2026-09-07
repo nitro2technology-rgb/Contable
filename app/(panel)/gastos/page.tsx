@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Repeat } from "lucide-react";
+import { Repeat, Users } from "lucide-react";
 import { Badge, Card, EmptyState, PageHeader, Table, Td, Th, Tr } from "@/components/ui";
 import { StatTile } from "@/components/stats";
 import { BarrasHorizontales, ChartCard } from "@/components/charts";
@@ -29,6 +29,7 @@ export default async function PaginaGastos({
       where: { fecha: { gte: inicio, lt: fin } },
       orderBy: { fecha: "desc" },
       take: 300,
+      include: { movimientoSocio: { select: { socio: { select: { nombre: true } } } } },
     }),
     gastosPorCategoria(inicio, fin),
     aniosConMovimiento(),
@@ -140,6 +141,11 @@ export default async function PaginaGastos({
                           Fijo
                         </Badge>
                       ) : null}
+                      {g.movimientoSocio ? (
+                        <Badge tono="aviso" icono={<Users className="size-3" aria-hidden="true" />}>
+                          Socio
+                        </Badge>
+                      ) : null}
                     </div>
                   </Td>
                   <Td className="text-ink-2">{humanizar(g.categoria)}</Td>
@@ -151,6 +157,19 @@ export default async function PaginaGastos({
                     {money(num(g.total))}
                   </Td>
                   <Td>
+                    {/* Un gasto nacido de unos honorarios se administra desde
+                        Socios: editarlo aquí dejaría el movimiento del socio
+                        diciendo una cifra y el gasto otra. */}
+                    {g.movimientoSocio ? (
+                      <div className="flex justify-end">
+                        <Link
+                          href="/socios"
+                          className="text-xs font-medium text-ink-2 hover:text-s1"
+                        >
+                          Ver en Socios
+                        </Link>
+                      </div>
+                    ) : (
                     <div className="flex items-center justify-end gap-3">
                       <DialogoGasto
                         gasto={{
@@ -177,6 +196,7 @@ export default async function PaginaGastos({
                       />
                       <BotonEliminar accion={eliminarGasto.bind(null, g.id)} />
                     </div>
+                    )}
                   </Td>
                 </Tr>
               ))}

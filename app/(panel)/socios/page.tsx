@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  Briefcase,
   CircleCheck,
   Clock,
   Info,
+  Minus,
   PiggyBank,
   TriangleAlert,
 } from "lucide-react";
@@ -13,70 +16,107 @@ import { StatTile } from "@/components/stats";
 import { BotonEliminar } from "@/components/dialog";
 import { num, prisma } from "@/lib/db";
 import { diasEntre, fecha, fechaInput, money } from "@/lib/format";
-import { rangoAnio, resumenPeriodo, saldosSocios } from "@/lib/consultas";
+import { rangoAnio, repartoPorProyecto, resumenPeriodo, saldosSocios } from "@/lib/consultas";
 import { DialogoMovimiento, DialogoSocio } from "./form";
 import { eliminarMovimiento, eliminarSocio } from "./actions";
 
 export const metadata: Metadata = { title: "Socios" };
 export const dynamic = "force-dynamic";
 
-const ETIQUETA_TIPO: Record<string, { texto: string; aumenta: boolean }> = {
-  PRESTAMO: { texto: "Préstamo", aumenta: true },
-  RETIRO: { texto: "Retiro", aumenta: true },
-  ABONO: { texto: "Abono", aumenta: false },
-  DISTRIBUCION_UTILIDADES: { texto: "Distribución de utilidades", aumenta: false },
-  APORTE_CAPITAL: { texto: "Aporte de capital", aumenta: false },
+/**
+ * Cómo se lee cada movimiento en el historial. `signo` es el efecto sobre el
+ * saldo del socio: negativo cuando le deja debiendo.
+ */
+const TIPOS: Record<
+  string,
+  { texto: string; signo: -1 | 0 | 1; esGasto: boolean }
+> = {
+  PRESTAMO: { texto: "Préstamo", signo: -1, esGasto: false },
+  RETIRO: { texto: "Retiro", signo: -1, esGasto: false },
+  ABONO: { texto: "Abono", signo: 1, esGasto: false },
+  HONORARIOS: { texto: "Honorarios", signo: 0, esGasto: true },
+  DISTRIBUCION_UTILIDADES: { texto: "Distribución de utilidades", signo: 0, esGasto: false },
+  APORTE_CAPITAL: { texto: "Aporte de capital", signo: 0, esGasto: false },
 };
 
 export default async function PaginaSocios() {
   const anio = new Date().getUTCFullYear();
   const { inicio, fin } = rangoAnio(anio);
 
-  const [saldos, movimientos, resumen] = await Promise.all([
+  const [saldos, movimientos, resumen, proyectos] = await Promise.all([
     saldosSocios(),
     prisma.movimientoSocio.findMany({
       orderBy: { fecha: "desc" },
       take: 100,
-      include: { socio: { select: { id: true, nombre: true } } },
+      include: {
+        socio: { select: { id: true, nombre: true } },
+        factura: { select: { id: true, numero: true, proyecto: true } },
+      },
     }),
     resumenPeriodo(inicio, fin),
+    repartoPorProyecto(anio),
   ]);
 
-  const deudaTotal = saldos.reduce((a, s) => a + Math.max(s.saldo, 0), 0);
+  const deudaTotal = saldos.reduce((a, s) => a + Math.max(-s.saldo, 0), 0);
   const capital = saldos.reduce((a, s) => a + s.aportado, 0);
-  const opciones = saldos.map((s) => ({ id: s.id, nombre: s.nombre }));
+  const honorariosTotal = saldos.reduce((a, s) => a + s.honorarios, 0);
 
+  const opciones = saldos.map((s) => ({ id: s.id, nombre: s.nombre }));
+  const opcionesProyecto = proyectos.map((p) => ({
+    facturaId: p.facturaId,
+    numero: p.numero,
+    proyecto: p.proyecto,
+    cliente: p.cliente,
+    base: p.base,
+    repartido: p.repartido,
+    disponible: p.disponible,
+  }));
+
+  const conReparto = proyectos.filter((p) => p.repartido > 0 || p.base > 0).slice(0, 12);
   const hoy = new Date();
 
   return (
     <>
       <PageHeader
         titulo="Socios"
-        descripcion="Cuenta corriente de cada socio: lo que ha tomado, lo que ha devuelto y lo que queda pendiente."
+        descripcion="Cuenta corriente de cada socio y reparto de honorarios por proyecto."
       >
         <DialogoSocio />
-        {saldos.length > 0 ? <DialogoMovimiento socios={opciones} /> : null}
+        {saldos.length > 0 ? (
+          <DialogoMovimiento socios={opciones} proyectos={opcionesProyecto} />
+        ) : null}
       </PageHeader>
 
       <div className="mb-5 flex gap-3 rounded-xl border border-edge bg-surface-2 px-4 py-3">
         <Info className="mt-0.5 size-4 shrink-0 text-s1" aria-hidden="true" />
-        <p className="text-sm text-ink-2">
-          Contablemente esto es una{" "}
-          <strong className="font-medium text-ink">cuenta por cobrar a socios</strong>, no un gasto:
-          no baja la utilidad ni es deducible. Se cruza contra las utilidades que se decreten a su
-          favor. Un retiro sin utilidades decretadas ni devolución puede tratarse como dividendo o
-          como préstamo, con consecuencias tributarias distintas — conviene consultarlo con el
-          contador antes de cerrar el año.
-        </p>
+        <div className="text-sm text-ink-2">
+          <p>
+            <strong className="font-medium text-ink">Los honorarios son gasto; los préstamos no.</strong>{" "}
+            Pagarle a un socio por el trabajo de un proyecto baja la utilidad y aparece en Gastos.
+            Prestarle dinero no: es una cuenta por cobrar que deja su saldo en negativo hasta que lo
+            devuelva.
+          </p>
+          <p className="mt-1.5">
+            Un préstamo solo se salda con un <strong className="font-medium text-ink">abono</strong>.
+            Ni los honorarios ni el reparto de utilidades lo cancelan solos: si quieres cruzarlo
+            contra utilidades, registra los dos movimientos para que quede el rastro.
+          </p>
+        </div>
       </div>
 
-      <div className="mb-5 grid gap-4 sm:grid-cols-3">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           etiqueta="Deuda total de los socios"
           valor={deudaTotal}
-          nota={deudaTotal > 0 ? "Pendiente de devolver o cruzar" : "Nadie tiene saldo pendiente"}
+          nota={deudaTotal > 0 ? "Pendiente de devolver" : "Nadie tiene saldo pendiente"}
           subirEsBueno={false}
           acento="var(--s8)"
+        />
+        <StatTile
+          etiqueta={`Honorarios pagados ${anio}`}
+          valor={honorariosTotal}
+          nota="Registrados como gasto"
+          acento="var(--s2)"
         />
         <StatTile
           etiqueta="Capital aportado"
@@ -85,9 +125,9 @@ export default async function PaginaSocios() {
           acento="var(--s3)"
         />
         <StatTile
-          etiqueta={`Utilidad ${anio} disponible`}
-          valor={Math.max(resumen.utilidad, 0)}
-          nota="Antes de impuestos y reserva legal"
+          etiqueta={`Utilidad ${anio}`}
+          valor={resumen.utilidad}
+          nota="Ya descontados los honorarios"
           acento="var(--s1)"
         />
       </div>
@@ -97,7 +137,7 @@ export default async function PaginaSocios() {
         <Card>
           <EmptyState
             titulo="Aún no hay socios registrados"
-            descripcion="Registra a los socios de la S.A.S. para llevar el control de préstamos, retiros y aportes."
+            descripcion="Registra a los socios de la S.A.S. para repartir honorarios por proyecto y llevar el control de préstamos y aportes."
           >
             <DialogoSocio />
           </EmptyState>
@@ -105,7 +145,7 @@ export default async function PaginaSocios() {
       ) : (
         <div className="mb-5 grid gap-4 md:grid-cols-2">
           {saldos.map((s) => {
-            const debe = s.saldo > 0;
+            const debe = s.saldo < 0;
             return (
               <Card key={s.id} className="p-5">
                 <div className="flex items-start justify-between gap-3">
@@ -133,16 +173,18 @@ export default async function PaginaSocios() {
                   )}
                 </div>
 
+                {/* El saldo se muestra desde la perspectiva del socio: negativo
+                    cuando le debe a la empresa, con el signo a la vista. */}
                 <p
                   className={`mt-4 text-3xl font-semibold tracking-tight ${
                     debe ? "text-critical" : "text-ink"
                   }`}
                 >
-                  {money(Math.max(s.saldo, 0))}
+                  {debe ? `−${money(-s.saldo)}` : money(0)}
                 </p>
                 <p className="mt-0.5 text-xs text-ink-muted">
                   {debe
-                    ? "Saldo pendiente con la empresa"
+                    ? "Saldo en contra: lo que le debe a la empresa"
                     : "Sin saldo pendiente con la empresa"}
                 </p>
 
@@ -154,6 +196,10 @@ export default async function PaginaSocios() {
                   <div className="flex justify-between gap-2">
                     <dt className="text-ink-muted">Devuelto</dt>
                     <dd className="tabular text-ink">{money(s.abonado)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-ink-muted">Honorarios</dt>
+                    <dd className="tabular text-ink">{money(s.honorarios)}</dd>
                   </div>
                   <div className="flex justify-between gap-2">
                     <dt className="text-ink-muted">Utilidades</dt>
@@ -168,6 +214,7 @@ export default async function PaginaSocios() {
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-edge pt-4">
                   <DialogoMovimiento
                     socios={opciones}
+                    proyectos={opcionesProyecto}
                     socioIdPorDefecto={s.id}
                     disparador={
                       <button
@@ -212,16 +259,73 @@ export default async function PaginaSocios() {
         </div>
       )}
 
+      {/* --- Reparto por proyecto ------------------------------------------ */}
+      {conReparto.length > 0 ? (
+        <Card className="mb-5">
+          <CardHeader
+            titulo="Reparto por proyecto"
+            descripcion={`Cuánto de cada factura de ${anio} se han pagado los socios`}
+          />
+          <Table>
+            <thead>
+              <tr>
+                <Th>Factura</Th>
+                <Th>Proyecto</Th>
+                <Th numerico>Base facturada</Th>
+                <Th numerico>Repartido</Th>
+                <Th numerico>Sin repartir</Th>
+                <Th>Detalle</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {conReparto.map((p) => (
+                <Tr key={p.facturaId}>
+                  <Td>
+                    <Link
+                      href={`/facturas/${p.facturaId}`}
+                      className="font-medium text-ink hover:text-s1"
+                    >
+                      {p.numero}
+                    </Link>
+                  </Td>
+                  <Td className="text-ink-2">{p.proyecto || p.cliente}</Td>
+                  <Td numerico>{money(p.base)}</Td>
+                  <Td numerico className={p.repartido > 0 ? "font-medium text-ink" : "text-ink-muted"}>
+                    {p.repartido > 0 ? money(p.repartido) : "—"}
+                  </Td>
+                  <Td numerico className="text-ink-2">
+                    {money(p.disponible)}
+                  </Td>
+                  <Td>
+                    {p.socios.length === 0 ? (
+                      <span className="text-xs text-ink-muted">Sin repartir</span>
+                    ) : (
+                      <span className="flex flex-wrap gap-1">
+                        {p.socios.map((x) => (
+                          <Badge key={x.nombre} tono="neutro">
+                            {x.nombre} {money(x.monto)}
+                          </Badge>
+                        ))}
+                      </span>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+      ) : null}
+
       {/* --- Historial ----------------------------------------------------- */}
       <Card>
         <CardHeader
           titulo="Historial de movimientos"
-          descripcion="Todos los préstamos, retiros, abonos y aportes registrados"
+          descripcion="Honorarios, préstamos, retiros, abonos, aportes y utilidades"
         />
         {movimientos.length === 0 ? (
           <EmptyState
             titulo="Sin movimientos"
-            descripcion="Cuando un socio tome o devuelva dinero, regístralo aquí para que quede el rastro."
+            descripcion="Registra aquí lo que cada socio cobra por un proyecto o toma de la caja."
           />
         ) : (
           <Table>
@@ -231,17 +335,20 @@ export default async function PaginaSocios() {
                 <Th>Socio</Th>
                 <Th>Tipo</Th>
                 <Th>Concepto</Th>
-                <Th>Devolución</Th>
+                <Th>Proyecto</Th>
                 <Th numerico>Monto</Th>
                 <Th />
               </tr>
             </thead>
             <tbody>
               {movimientos.map((m) => {
-                const info = ETIQUETA_TIPO[m.tipo];
+                const info = TIPOS[m.tipo];
                 const dias = m.fechaCompromiso
                   ? diasEntre(hoy, new Date(m.fechaCompromiso))
                   : null;
+
+                const Icono =
+                  info.signo === -1 ? ArrowUpRight : info.signo === 1 ? ArrowDownLeft : Minus;
 
                 return (
                   <Tr key={m.id}>
@@ -249,52 +356,69 @@ export default async function PaginaSocios() {
                     <Td className="font-medium">{m.socio.nombre}</Td>
                     <Td>
                       <span className="flex items-center gap-1.5 text-xs text-ink-2">
-                        {info.aumenta ? (
-                          <ArrowUpRight className="size-3.5 shrink-0 text-critical" aria-hidden="true" />
-                        ) : (
-                          <ArrowDownLeft
-                            className="size-3.5 shrink-0 text-good-text"
-                            aria-hidden="true"
-                          />
-                        )}
+                        <Icono
+                          className={`size-3.5 shrink-0 ${
+                            info.signo === -1
+                              ? "text-critical"
+                              : info.signo === 1
+                                ? "text-good-text"
+                                : "text-ink-muted"
+                          }`}
+                          aria-hidden="true"
+                        />
                         {info.texto}
+                        {info.esGasto ? (
+                          <Badge tono="aviso" icono={<Briefcase className="size-3" aria-hidden="true" />}>
+                            gasto
+                          </Badge>
+                        ) : null}
                       </span>
                     </Td>
-                    <Td className="text-ink-2">{m.concepto}</Td>
+                    <Td className="text-ink-2">
+                      {m.concepto}
+                      {dias !== null && dias < 0 ? (
+                        <Badge
+                          tono="critico"
+                          icono={<TriangleAlert className="size-3" aria-hidden="true" />}
+                        >
+                          devolución vencida
+                        </Badge>
+                      ) : dias !== null && dias <= 15 ? (
+                        <Badge tono="aviso" icono={<Clock className="size-3" aria-hidden="true" />}>
+                          vence en {dias} d
+                        </Badge>
+                      ) : null}
+                    </Td>
                     <Td>
-                      {m.fechaCompromiso ? (
-                        <span className="flex items-center gap-2">
-                          <span className="tabular text-xs text-ink-2">
-                            {fecha(m.fechaCompromiso)}
-                          </span>
-                          {dias !== null && dias < 0 ? (
-                            <Badge
-                              tono="critico"
-                              icono={<TriangleAlert className="size-3" aria-hidden="true" />}
-                            >
-                              vencido
-                            </Badge>
-                          ) : dias !== null && dias <= 15 ? (
-                            <Badge tono="aviso" icono={<Clock className="size-3" aria-hidden="true" />}>
-                              en {dias} d
-                            </Badge>
-                          ) : null}
-                        </span>
+                      {m.factura ? (
+                        <Link
+                          href={`/facturas/${m.factura.id}`}
+                          className="text-xs text-s1 hover:underline"
+                        >
+                          {m.factura.numero}
+                        </Link>
                       ) : (
                         <span className="text-xs text-ink-muted">—</span>
                       )}
                     </Td>
                     <Td
                       numerico
-                      className={info.aumenta ? "font-medium text-critical" : "font-medium text-good-text"}
+                      className={
+                        info.signo === -1
+                          ? "font-medium text-critical"
+                          : info.signo === 1
+                            ? "font-medium text-good-text"
+                            : "font-medium text-ink"
+                      }
                     >
-                      {info.aumenta ? "+" : "−"}
+                      {info.signo === -1 ? "−" : info.signo === 1 ? "+" : ""}
                       {money(num(m.monto))}
                     </Td>
                     <Td>
                       <div className="flex items-center justify-end gap-3">
                         <DialogoMovimiento
                           socios={opciones}
+                          proyectos={opcionesProyecto}
                           movimiento={{
                             id: m.id,
                             socioId: m.socioId,
@@ -306,6 +430,7 @@ export default async function PaginaSocios() {
                             fechaCompromiso: m.fechaCompromiso
                               ? fechaInput(m.fechaCompromiso)
                               : "",
+                            facturaId: m.facturaId ?? "",
                           }}
                           disparador={
                             <button
@@ -326,6 +451,11 @@ export default async function PaginaSocios() {
           </Table>
         )}
       </Card>
+
+      <p className="mt-4 text-xs text-ink-muted">
+        Al borrar unos honorarios se borra también el gasto que generaron, para que la utilidad y la
+        cuenta del socio nunca se contradigan.
+      </p>
     </>
   );
 }

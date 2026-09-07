@@ -222,12 +222,19 @@ export type SaldoSocio = {
   id: string;
   nombre: string;
   participacion: number;
-  /** Positivo: el socio le debe a la empresa. */
+  /**
+   * Cuenta corriente del socio, vista desde el socio: NEGATIVA cuando le debe a
+   * la empresa. Solo la mueven los prestamos/retiros y los abonos.
+   */
   saldo: number;
+  /** Lo que ha tomado en prestamos y retiros. */
   prestado: number;
+  /** Lo que ha devuelto. */
   abonado: number;
   aportado: number;
   distribuido: number;
+  /** Honorarios cobrados por trabajo. No son deuda ni la cancelan. */
+  honorarios: number;
   movimientos: number;
   ultimoMovimiento: Date | null;
 };
@@ -243,6 +250,7 @@ export async function saldosSocios(): Promise<SaldoSocio[]> {
     let abonado = 0;
     let aportado = 0;
     let distribuido = 0;
+    let honorarios = 0;
 
     for (const m of s.movimientos) {
       const v = num(m.monto);
@@ -253,6 +261,9 @@ export async function saldosSocios(): Promise<SaldoSocio[]> {
           break;
         case "ABONO":
           abonado += v;
+          break;
+        case "HONORARIOS":
+          honorarios += v;
           break;
         case "APORTE_CAPITAL":
           aportado += v;
@@ -267,15 +278,85 @@ export async function saldosSocios(): Promise<SaldoSocio[]> {
       id: s.id,
       nombre: s.nombre,
       participacion: num(s.participacion),
-      // Una distribucion de utilidades cruza contra el saldo pendiente: es la
-      // forma natural de saldar lo que el socio tomo por anticipado.
-      saldo: prestado - abonado - distribuido,
+      // La deuda solo la crean los prestamos y retiros, y solo la salda un
+      // abono explicito. Ni los honorarios ni el reparto de utilidades la
+      // tocan: cruzarlos automaticamente hacia desaparecer de la vista lo que
+      // el socio realmente debe. Si se quiere saldar un prestamo con una
+      // utilidad, se registran los dos movimientos y queda el rastro.
+      saldo: abonado - prestado,
       prestado,
       abonado,
       aportado,
       distribuido,
+      honorarios,
       movimientos: s.movimientos.length,
       ultimoMovimiento: s.movimientos[0]?.fecha ?? null,
+    };
+  });
+}
+
+
+/**
+ * Reparto de honorarios con cargo a cada factura: cuanto se facturó y cuanto
+ * se han repartido ya los socios. Sirve para no repartir mas de lo cobrado.
+ */
+export type RepartoProyecto = {
+  facturaId: string;
+  numero: string;
+  proyecto: string;
+  cliente: string;
+  fechaEmision: Date;
+  /** Base facturada, sin IVA: es lo que realmente entra a la empresa. */
+  base: number;
+  repartido: number;
+  disponible: number;
+  socios: { nombre: string; monto: number }[];
+};
+
+export async function repartoPorProyecto(anio?: number): Promise<RepartoProyecto[]> {
+  const rango = anio ? rangoAnio(anio) : null;
+
+  const facturas = await prisma.factura.findMany({
+    where: {
+      estado: { in: ESTADOS_VIGENTES },
+      ...(rango ? { fechaEmision: { gte: rango.inicio, lt: rango.fin } } : {}),
+    },
+    orderBy: { fechaEmision: "desc" },
+    select: {
+      id: true,
+      numero: true,
+      proyecto: true,
+      fechaEmision: true,
+      subtotal: true,
+      cliente: { select: { nombre: true } },
+      movimientosSocios: {
+        where: { tipo: "HONORARIOS" },
+        select: { monto: true, socio: { select: { nombre: true } } },
+      },
+    },
+  });
+
+  return facturas.map((f) => {
+    const base = num(f.subtotal);
+    const porSocio = new Map<string, number>();
+
+    for (const m of f.movimientosSocios) {
+      const n = m.socio.nombre;
+      porSocio.set(n, (porSocio.get(n) ?? 0) + num(m.monto));
+    }
+
+    const repartido = [...porSocio.values()].reduce((a, b) => a + b, 0);
+
+    return {
+      facturaId: f.id,
+      numero: f.numero,
+      proyecto: f.proyecto,
+      cliente: f.cliente.nombre,
+      fechaEmision: f.fechaEmision,
+      base,
+      repartido,
+      disponible: base - repartido,
+      socios: [...porSocio.entries()].map(([nombre, monto]) => ({ nombre, monto })),
     };
   });
 }

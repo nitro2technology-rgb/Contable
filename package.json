@@ -15,6 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "tsx prisma/reset.ts",
+    "db:respaldo": "tsx scripts/respaldo.ts",
     "db:studio": "prisma studio",
     "verificar:fiscal": "tsx scripts/verificar-fiscal.ts",
     "verificar:reintento": "tsx scripts/verificar-reintento.ts",

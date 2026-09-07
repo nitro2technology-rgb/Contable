@@ -82,7 +82,8 @@ export default async function Panel({
     aniosConMovimiento(),
   ]);
 
-  const deudaSocios = socios.reduce((a, s) => a + Math.max(s.saldo, 0), 0);
+  // El saldo del socio es negativo cuando debe; la deuda es su valor absoluto.
+  const deudaSocios = socios.reduce((a, s) => a + Math.max(-s.saldo, 0), 0);
   const periodoIvaVigente = periodosIvaAnio.find((p) => p.vigente) ?? periodosIvaAnio.at(-1);
 
   const hoy = new Date();
@@ -422,10 +423,10 @@ export default async function Panel({
                     </div>
                     <span
                       className={`tabular shrink-0 text-sm font-medium ${
-                        s.saldo > 0 ? "text-critical" : "text-ink-muted"
+                        s.saldo < 0 ? "text-critical" : "text-ink-muted"
                       }`}
                     >
-                      {s.saldo > 0 ? money(s.saldo) : "Al día"}
+                      {s.saldo < 0 ? `−${money(-s.saldo)}` : "Al día"}
                     </span>
                   </div>
                 ))
