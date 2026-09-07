@@ -4,7 +4,9 @@ import { PageHeader } from "@/components/ui";
 import { obtenerConfig, rangoAnio, resumenPeriodo } from "@/lib/consultas";
 import { periodicidadSugerida, UVT_UMBRAL_BIMESTRAL } from "@/lib/fiscal";
 import { money, plain } from "@/lib/format";
+import { num, prisma } from "@/lib/db";
 import { FormularioConfiguracion } from "./form";
+import { Pasarelas } from "./pasarelas";
 
 export const metadata: Metadata = { title: "Configuración" };
 export const dynamic = "force-dynamic";
@@ -13,7 +15,14 @@ export default async function PaginaConfiguracion() {
   const anioAnterior = new Date().getUTCFullYear() - 1;
   const { inicio, fin } = rangoAnio(anioAnterior);
 
-  const [config, resumen] = await Promise.all([obtenerConfig(), resumenPeriodo(inicio, fin)]);
+  const [config, resumen, pasarelas] = await Promise.all([
+    obtenerConfig(),
+    resumenPeriodo(inicio, fin),
+    prisma.pasarelaPago.findMany({
+      orderBy: [{ activo: "desc" }, { nombre: "asc" }],
+      include: { _count: { select: { pagos: true } } },
+    }),
+  ]);
 
   const sugerida = periodicidadSugerida(resumen.ingresos, config.valorUvt);
   const uvtDelAnio = resumen.ingresos / config.valorUvt;
@@ -39,7 +48,7 @@ export default async function PaginaConfiguracion() {
         </p>
       </div>
 
-      <div className="max-w-3xl">
+      <div className="max-w-3xl space-y-5">
         <FormularioConfiguracion
           sugerencia={sugerencia}
           config={{
@@ -54,6 +63,19 @@ export default async function PaginaConfiguracion() {
             tarifaIcaPorMil: config.tarifaIcaPorMil,
             tarifaRenta: config.tarifaRenta,
           }}
+        />
+
+        <Pasarelas
+          pasarelas={pasarelas.map((p) => ({
+            id: p.id,
+            nombre: p.nombre,
+            porcentaje: num(p.porcentaje),
+            fijo: num(p.fijo),
+            comisionTieneIva: p.comisionTieneIva,
+            activo: p.activo,
+            notas: p.notas,
+            pagos: p._count.pagos,
+          }))}
         />
       </div>
     </>

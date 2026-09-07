@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { EstadoAccion } from "@/components/dialog";
 import { prisma } from "@/lib/db";
 import { booleano, dinero, exito, fallo, opcion, texto } from "@/lib/formulario";
+import { PERIODICIDADES } from "@/lib/catalogos";
 
 const TRATAMIENTOS = ["GRAVADO_19", "GRAVADO_5", "EXENTO", "EXCLUIDO"] as const;
 const CONCEPTOS = ["NINGUNO", "HONORARIOS", "SERVICIOS", "COMPRAS", "ARRENDAMIENTO"] as const;
@@ -32,6 +33,8 @@ export async function guardarServicio(
     precioBase: dinero(d, "precioBase"),
     tratamientoIva: opcion(d, "tratamientoIva", TRATAMIENTOS, "GRAVADO_19"),
     conceptoRetefuente: opcion(d, "conceptoRetefuente", CONCEPTOS, "SERVICIOS"),
+    esRecurrente: booleano(d, "esRecurrente"),
+    periodicidad: opcion(d, "periodicidad", PERIODICIDADES, "MENSUAL"),
     activo: booleano(d, "activo"),
     notas: texto(d, "notas"),
   };
@@ -47,6 +50,7 @@ export async function guardarServicio(
 
   revalidatePath("/servicios");
   revalidatePath("/facturas");
+  revalidatePath("/suscripciones");
   return exito();
 }
 

@@ -1,11 +1,13 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { Info, Plus } from "lucide-react";
 import { Button, Checkbox, Field, Input, Select, Textarea } from "@/components/ui";
 import { ESTADO_INICIAL, FormDialog } from "@/components/dialog";
 import { DESCRIPCION_IVA, ETIQUETAS_IVA, RETEFUENTE } from "@/lib/fiscal";
 import { humanizar } from "@/lib/format";
+import { PERIODICIDADES } from "@/lib/catalogos";
 import { guardarServicio } from "./actions";
 
 const CATEGORIAS = [
@@ -30,6 +32,8 @@ export type ServicioForm = {
   precioBase: number;
   tratamientoIva: string;
   conceptoRetefuente: string;
+  esRecurrente: boolean;
+  periodicidad: string;
   activo: boolean;
   notas: string;
 };
@@ -49,6 +53,7 @@ export function DialogoServicio({
   // mismo, no en un manual aparte.
   const [tratamiento, setTratamiento] = useState<string>(s?.tratamientoIva ?? "GRAVADO_19");
   const [concepto, setConcepto] = useState<string>(s?.conceptoRetefuente ?? "SERVICIOS");
+  const [recurrente, setRecurrente] = useState<boolean>(s?.esRecurrente ?? false);
 
   return (
     <FormDialog
@@ -137,6 +142,46 @@ export function DialogoServicio({
             <span>{RETEFUENTE[concepto as keyof typeof RETEFUENTE].nota}</span>
           </p>
         </div>
+      </fieldset>
+
+      <fieldset className="mt-5 rounded-lg border border-edge p-4">
+        <legend className="px-1.5 text-xs font-medium text-ink-2">Forma de cobro</legend>
+
+        <Checkbox
+          name="esRecurrente"
+          label="Se cobra de forma periódica"
+          hint="Servicios que el cliente paga cada mes —soporte, mantenimiento, licencias— en vez de una sola vez al cerrar el proyecto."
+          checked={recurrente}
+          onChange={(e) => setRecurrente(e.target.checked)}
+        />
+
+        {recurrente ? (
+          <div className="mt-3 space-y-3">
+            <Field label="Periodicidad habitual" className="max-w-[220px]">
+              <Select name="periodicidad" defaultValue={s?.periodicidad ?? "MENSUAL"}>
+                {PERIODICIDADES.map((p) => (
+                  <option key={p} value={p}>
+                    {humanizar(p)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <p className="flex gap-2 rounded-lg bg-surface-2 px-3 py-2 text-xs text-ink-2">
+              <Info className="mt-0.5 size-3.5 shrink-0 text-s1" aria-hidden="true" />
+              <span>
+                Marcarlo aquí no cobra nada por sí solo: para empezar a facturarle a un cliente,
+                créale una suscripción en{" "}
+                <Link href="/suscripciones" className="text-s1 underline-offset-2 hover:underline">
+                  Suscripciones
+                </Link>
+                . Cada cliente puede tener su propio precio.
+              </span>
+            </p>
+          </div>
+        ) : (
+          <input type="hidden" name="periodicidad" value={s?.periodicidad ?? "MENSUAL"} />
+        )}
       </fieldset>
 
       <div className="mt-5 space-y-4">

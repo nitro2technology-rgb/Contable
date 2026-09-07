@@ -219,6 +219,52 @@ export function calcularFactura(
   };
 }
 
+
+// ---------------------------------------------------------------------------
+// Pasarelas de pago
+// ---------------------------------------------------------------------------
+
+/** IVA que grava la comision de una pasarela de pago en Colombia. */
+export const IVA_COMISION = 0.19;
+
+export type Pasarela = {
+  porcentaje: number;
+  fijo: number;
+  comisionTieneIva: boolean;
+};
+
+export type ComisionCalculada = {
+  /** Comision retenida, sin IVA. */
+  comision: number;
+  /** IVA sobre la comision. Es descontable, como el de cualquier otro costo. */
+  comisionIva: number;
+  /** Lo que realmente llega a la cuenta. */
+  neto: number;
+  /** Coste total de cobrar por esta via, para compararlo entre pasarelas. */
+  costoTotal: number;
+};
+
+/**
+ * Reparte lo que paga el cliente entre lo que se queda la pasarela y lo que
+ * entra a la cuenta.
+ *
+ * La comision se calcula sobre el monto BRUTO que paga el cliente —IVA de la
+ * venta incluido—, porque la pasarela cobra sobre lo que procesa, no sobre la
+ * base gravable de la factura.
+ */
+export function calcularComision(monto: number, pasarela: Pasarela): ComisionCalculada {
+  const comision = redondearPeso(monto * pasarela.porcentaje + pasarela.fijo);
+  const comisionIva = pasarela.comisionTieneIva ? redondearPeso(comision * IVA_COMISION) : 0;
+  const costoTotal = comision + comisionIva;
+
+  return {
+    comision,
+    comisionIva,
+    neto: monto - costoTotal,
+    costoTotal,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Periodos de declaracion
 // ---------------------------------------------------------------------------

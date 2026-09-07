@@ -30,17 +30,17 @@ function datosGasto(d: FormData) {
 }
 
 /**
- * Los gastos que nacen de unos honorarios de socio se administran desde el
- * modulo de socios. Editarlos o borrarlos aqui dejaria el movimiento del socio
- * y el gasto diciendo cosas distintas, asi que se bloquea tambien en el
- * servidor: ocultar el boton no es una defensa.
+ * Hay gastos que no nacen aqui: los honorarios de un socio y la comision de una
+ * pasarela. Editarlos o borrarlos desde este modulo dejaria su origen diciendo
+ * una cifra y el gasto otra, asi que se bloquea tambien en el servidor —
+ * esconder el boton no es una defensa.
  */
-async function esDeSocio(id: string): Promise<boolean> {
+async function tieneOrigenExterno(id: string): Promise<boolean> {
   const g = await prisma.gasto.findUnique({
     where: { id },
-    select: { movimientoSocioId: true },
+    select: { movimientoSocioId: true, pagoId: true },
   });
-  return Boolean(g?.movimientoSocioId);
+  return Boolean(g?.movimientoSocioId || g?.pagoId);
 }
 
 export async function guardarGasto(_estado: EstadoAccion, d: FormData): Promise<EstadoAccion> {
@@ -51,8 +51,10 @@ export async function guardarGasto(_estado: EstadoAccion, d: FormData): Promise<
 
   const id = texto(d, "id");
 
-  if (id && (await esDeSocio(id))) {
-    return fallo("Este gasto viene de unos honorarios de socio. Edítalo desde el módulo de Socios.");
+  if (id && (await tieneOrigenExterno(id))) {
+    return fallo(
+      "Este gasto lo genera otro módulo (honorarios de socio o comisión de pasarela). Edítalo desde su origen."
+    );
   }
 
   try {
@@ -69,7 +71,7 @@ export async function guardarGasto(_estado: EstadoAccion, d: FormData): Promise<
 }
 
 export async function eliminarGasto(id: string) {
-  if (await esDeSocio(id)) return;
+  if (await tieneOrigenExterno(id)) return;
 
   await prisma.gasto.delete({ where: { id } });
   revalidatePath("/gastos");

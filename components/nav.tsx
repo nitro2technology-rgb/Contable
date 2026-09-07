@@ -14,6 +14,7 @@ import {
   Moon,
   Package,
   Receipt,
+  RefreshCw,
   Repeat,
   Settings,
   Sun,
@@ -26,6 +27,7 @@ import { cx } from "./ui";
 const ENLACES = [
   { href: "/", etiqueta: "Panel", icono: LayoutDashboard },
   { href: "/facturas", etiqueta: "Facturas", icono: FileText },
+  { href: "/suscripciones", etiqueta: "Suscripciones", icono: RefreshCw },
   { href: "/clientes", etiqueta: "Clientes", icono: Users },
   { href: "/servicios", etiqueta: "Servicios", icono: Package },
   { href: "/gastos", etiqueta: "Gastos", icono: Receipt },

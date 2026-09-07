@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Repeat, Users } from "lucide-react";
+import { CreditCard, Repeat, Users } from "lucide-react";
 import { Badge, Card, EmptyState, PageHeader, Table, Td, Th, Tr } from "@/components/ui";
 import { StatTile } from "@/components/stats";
 import { BarrasHorizontales, ChartCard } from "@/components/charts";
@@ -29,7 +29,10 @@ export default async function PaginaGastos({
       where: { fecha: { gte: inicio, lt: fin } },
       orderBy: { fecha: "desc" },
       take: 300,
-      include: { movimientoSocio: { select: { socio: { select: { nombre: true } } } } },
+      include: {
+        movimientoSocio: { select: { socio: { select: { nombre: true } } } },
+        pago: { select: { facturaId: true, pasarela: { select: { nombre: true } } } },
+      },
     }),
     gastosPorCategoria(inicio, fin),
     aniosConMovimiento(),
@@ -146,6 +149,11 @@ export default async function PaginaGastos({
                           Socio
                         </Badge>
                       ) : null}
+                      {g.pago ? (
+                        <Badge tono="neutro" icono={<CreditCard className="size-3" aria-hidden="true" />}>
+                          Pasarela
+                        </Badge>
+                      ) : null}
                     </div>
                   </Td>
                   <Td className="text-ink-2">{humanizar(g.categoria)}</Td>
@@ -160,13 +168,13 @@ export default async function PaginaGastos({
                     {/* Un gasto nacido de unos honorarios se administra desde
                         Socios: editarlo aquí dejaría el movimiento del socio
                         diciendo una cifra y el gasto otra. */}
-                    {g.movimientoSocio ? (
+                    {g.movimientoSocio || g.pago ? (
                       <div className="flex justify-end">
                         <Link
-                          href="/socios"
+                          href={g.pago ? `/facturas/${g.pago.facturaId}` : "/socios"}
                           className="text-xs font-medium text-ink-2 hover:text-s1"
                         >
-                          Ver en Socios
+                          {g.pago ? "Ver la factura" : "Ver en Socios"}
                         </Link>
                       </div>
                     ) : (

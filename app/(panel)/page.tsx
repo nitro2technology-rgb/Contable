@@ -16,6 +16,7 @@ import {
   aniosConMovimiento,
   cartera,
   costoFijoMensual,
+  ingresoRecurrenteMensual,
   flujoMensual,
   gastosPorCategoria,
   ingresosPorCliente,
@@ -60,6 +61,7 @@ export default async function Panel({
     periodosIvaAnio,
     proximasFacturas,
     anios,
+    recurrente,
   ] = await Promise.all([
     resumenPeriodo(inicio, fin),
     resumenPeriodo(anterior.inicio, anterior.fin),
@@ -80,6 +82,7 @@ export default async function Panel({
       include: { cliente: { select: { nombre: true } }, pagos: { select: { monto: true } } },
     }),
     aniosConMovimiento(),
+    ingresoRecurrenteMensual(),
   ]);
 
   // El saldo del socio es negativo cuando debe; la deuda es su valor absoluto.
@@ -385,24 +388,53 @@ export default async function Panel({
 
         <div className="space-y-4">
           <Card className="p-5">
-            <p className="text-xs font-medium text-ink-2">Costo fijo mensual</p>
-            <p className="mt-1.5 text-2xl font-semibold tracking-tight text-ink">
-              {moneyCompact(fijos.total)}
-            </p>
-            <p className="mt-1 text-xs text-ink-muted">
-              {fijos.plantillas} gasto{fijos.plantillas === 1 ? "" : "s"} recurrente
-              {fijos.plantillas === 1 ? "" : "s"} activo{fijos.plantillas === 1 ? "" : "s"}.{" "}
-              <Link href="/gastos-fijos" className="text-s1 underline-offset-2 hover:underline">
-                Administrar
-              </Link>
-            </p>
-            <div className="mt-4 border-t border-edge pt-4">
-              <p className="text-xs text-ink-2">
-                Necesitas facturar al menos{" "}
-                <strong className="tabular font-semibold text-ink">
+            <p className="text-xs font-medium text-ink-2">Cada mes, sin vender nada nuevo</p>
+
+            <div className="mt-3 space-y-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-xs text-ink-2">Entra (suscripciones)</span>
+                <span className="tabular text-lg font-semibold text-ink">
+                  {moneyCompact(recurrente.total)}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-xs text-ink-2">Sale (gastos fijos)</span>
+                <span className="tabular text-lg font-semibold text-ink">
                   {moneyCompact(fijos.total)}
-                </strong>{" "}
-                cada mes solo para cubrir la operación.
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 border-t border-edge pt-4">
+              {/* La diferencia entre lo que entra y lo que sale sin esfuerzo
+                  comercial es lo que dice si la empresa se sostiene sola. */}
+              <p className="text-xs text-ink-2">
+                {recurrente.total >= fijos.total && fijos.total > 0 ? (
+                  <>
+                    Lo recurrente ya cubre la operación, con{" "}
+                    <strong className="tabular font-semibold text-good-text">
+                      {moneyCompact(recurrente.total - fijos.total)}
+                    </strong>{" "}
+                    de margen.
+                  </>
+                ) : (
+                  <>
+                    Faltan{" "}
+                    <strong className="tabular font-semibold text-ink">
+                      {moneyCompact(fijos.total - recurrente.total)}
+                    </strong>{" "}
+                    al mes para cubrir la operación con ingresos recurrentes.
+                  </>
+                )}
+              </p>
+              <p className="mt-2 text-xs text-ink-muted">
+                <Link href="/suscripciones" className="text-s1 underline-offset-2 hover:underline">
+                  Suscripciones
+                </Link>{" "}
+                ·{" "}
+                <Link href="/gastos-fijos" className="text-s1 underline-offset-2 hover:underline">
+                  Gastos fijos
+                </Link>
               </p>
             </div>
           </Card>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { TriangleAlert } from "lucide-react";
+import { RefreshCw, TriangleAlert } from "lucide-react";
 import { Badge, Card, EmptyState, PageHeader, Table, Td, Th, Tr } from "@/components/ui";
 import { BotonEliminar } from "@/components/dialog";
 import { num, prisma } from "@/lib/db";
@@ -54,6 +54,7 @@ export default async function PaginaServicios() {
               <tr>
                 <Th>Servicio</Th>
                 <Th>Categoría</Th>
+                <Th>Cobro</Th>
                 <Th>IVA</Th>
                 <Th>Retefuente</Th>
                 <Th numerico>Precio base</Th>
@@ -81,6 +82,16 @@ export default async function PaginaServicios() {
                     </Td>
 
                     <Td className="text-ink-2">{humanizar(s.categoria)}</Td>
+
+                    <Td>
+                      {s.esRecurrente ? (
+                        <Badge tono="info" icono={<RefreshCw className="size-3" aria-hidden="true" />}>
+                          {humanizar(s.periodicidad)}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-ink-muted">Por proyecto</span>
+                      )}
+                    </Td>
 
                     <Td>
                       <Badge tono={tasaIva(s.tratamientoIva) > 0 ? "info" : "neutro"}>
@@ -120,6 +131,8 @@ export default async function PaginaServicios() {
                             precioBase: num(s.precioBase),
                             tratamientoIva: s.tratamientoIva,
                             conceptoRetefuente: s.conceptoRetefuente,
+                            esRecurrente: s.esRecurrente,
+                            periodicidad: s.periodicidad,
                             activo: s.activo,
                             notas: s.notas,
                           }}

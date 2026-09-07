@@ -1,4 +1,4 @@
-import { calcularFactura, periodosIva, periodicidadSugerida, RETEFUENTE } from "../lib/fiscal";
+import { calcularComision, calcularFactura, periodosIva, periodicidadSugerida, RETEFUENTE } from "../lib/fiscal";
 
 const UVT = 49799;
 let fallos = 0;
@@ -62,6 +62,31 @@ console.log(`     último:  ${bim[5].etiqueta} ${bim[5].inicio.toISOString().sli
 ok("4 cuatrimestres -> 3 periodos", periodosIva(2026, "CUATRIMESTRAL").length, 3);
 console.log(`     sugerida con 100M: ${periodicidadSugerida(100_000_000, UVT)}`);
 console.log(`     sugerida con 6.000M: ${periodicidadSugerida(6_000_000_000, UVT)}`);
+
+console.log("\n== Comisiones de pasarela ==");
+// Tarifa tipo Wompi: 2,65 % + $700, con IVA sobre la comision.
+const w = calcularComision(1_000_000, { porcentaje: 0.0265, fijo: 700, comisionTieneIva: true });
+ok("comision 2,65% + 700", w.comision, 27_200);
+ok("IVA 19% de la comision", w.comisionIva, 5_168);
+ok("neto a la cuenta", w.neto, 1_000_000 - 27_200 - 5_168);
+ok("coste total de cobrar", w.costoTotal, 32_368);
+
+// Algunas pasarelas del exterior no facturan IVA sobre la comision.
+const sinIva = calcularComision(500_000, { porcentaje: 0.03, fijo: 0, comisionTieneIva: false });
+ok("sin IVA: comision", sinIva.comision, 15_000);
+ok("sin IVA: no suma IVA", sinIva.comisionIva, 0);
+ok("sin IVA: neto", sinIva.neto, 485_000);
+
+// Pago directo: sin porcentaje ni fijo no debe descontar nada.
+const directo = calcularComision(750_000, { porcentaje: 0, fijo: 0, comisionTieneIva: true });
+ok("pago directo no descuenta", directo.neto, 750_000);
+
+// El cargo fijo pesa mucho mas en cobros pequenios: conviene que se vea.
+const soloFijo = calcularComision(50_000, { porcentaje: 0, fijo: 900, comisionTieneIva: true });
+ok("solo cargo fijo", soloFijo.comision, 900);
+console.log(
+  `     un cobro de 50.000 con cargo fijo de 900 cuesta ${((soloFijo.costoTotal / 50_000) * 100).toFixed(2)} %`
+);
 
 console.log(fallos === 0 ? "\nTodo correcto." : `\n${fallos} comprobaciones fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

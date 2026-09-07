@@ -72,6 +72,7 @@ enum MetodoPago {
 enum CategoriaGasto {
   SERVIDORES
   APIS
+  IA
   DOMINIOS
   SOFTWARE
   MARKETING
@@ -172,7 +173,8 @@ model Cliente {
   notas  String  @default("")
   activo Boolean @default(true)
 
-  facturas Factura[]
+  facturas      Factura[]
+  suscripciones Suscripcion[]
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -196,10 +198,16 @@ model Servicio {
   tratamientoIva     TratamientoIva     @default(GRAVADO_19)
   conceptoRetefuente ConceptoRetefuente @default(SERVICIOS)
 
+  /// El servicio se cobra de forma periodica, no por proyecto cerrado.
+  esRecurrente Boolean      @default(false)
+  /// Cada cuanto se cobra cuando es recurrente.
+  periodicidad Periodicidad @default(MENSUAL)
+
   activo Boolean @default(true)
   notas  String  @default("")
 
-  items FacturaItem[]
+  items         FacturaItem[]
+  suscripciones Suscripcion[]
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -245,12 +253,17 @@ model Factura {
   /// Honorarios de socios repartidos con cargo a esta factura.
   movimientosSocios MovimientoSocio[]
 
+  /// Suscripcion que genero esta factura, si viene de un servicio recurrente.
+  suscripcionId String?
+  suscripcion   Suscripcion? @relation(fields: [suscripcionId], references: [id], onDelete: SetNull)
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
   @@index([clienteId])
   @@index([fechaEmision])
   @@index([estado])
+  @@index([suscripcionId])
 }
 
 model FacturaItem {
@@ -285,16 +298,59 @@ model Pago {
   facturaId String
   factura   Factura @relation(fields: [facturaId], references: [id], onDelete: Cascade)
 
-  fecha      DateTime
-  monto      Decimal    @db.Decimal(16, 2)
+  fecha DateTime
+
+  /// Lo que pago el cliente. Es lo que abona a la factura, aunque a la cuenta
+  /// llegue menos porque la pasarela se quede una comision.
+  monto Decimal @db.Decimal(16, 2)
+
   metodo     MetodoPago @default(TRANSFERENCIA)
   referencia String     @default("")
   notas      String     @default("")
+
+  /// Pasarela por la que entro el dinero, si no fue un pago directo.
+  pasarelaId String?
+  pasarela   PasarelaPago? @relation(fields: [pasarelaId], references: [id], onDelete: SetNull)
+
+  /// Comision retenida por la pasarela, sin IVA.
+  comision Decimal @default(0) @db.Decimal(16, 2)
+  /// IVA sobre la comision. Es descontable como cualquier otro IVA de un costo.
+  comisionIva Decimal @default(0) @db.Decimal(16, 2)
+  /// Lo que realmente entro a la cuenta: monto - comision - IVA de la comision.
+  neto Decimal @default(0) @db.Decimal(16, 2)
+
+  /// Gasto que registra la comision, para que aparezca en la utilidad.
+  gastoComision Gasto? @relation("ComisionPasarela")
 
   creadoEn DateTime @default(now())
 
   @@index([facturaId])
   @@index([fecha])
+  @@index([pasarelaId])
+}
+
+/// Pasarela de pago (Wompi, PayU, Mercado Pago...). Se queda un porcentaje de
+/// cada transaccion, y a veces un cargo fijo, que para la empresa es un gasto
+/// financiero.
+model PasarelaPago {
+  id     String @id @default(cuid())
+  nombre String
+
+  /// Comision como fraccion: 0.0299 = 2,99 %.
+  porcentaje Decimal @default(0) @db.Decimal(6, 5)
+  /// Cargo fijo por transaccion, en pesos.
+  fijo       Decimal @default(0) @db.Decimal(16, 2)
+
+  /// La comision de las pasarelas suele estar gravada con IVA del 19 %.
+  comisionTieneIva Boolean @default(true)
+
+  activo Boolean @default(true)
+  notas  String  @default("")
+
+  pagos Pago[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -331,6 +387,11 @@ model Gasto {
   /// de socios, no desde el de gastos, para que ambos no se contradigan.
   movimientoSocioId String?          @unique
   movimientoSocio   MovimientoSocio? @relation(fields: [movimientoSocioId], references: [id], onDelete: Cascade)
+
+  /// Gasto generado por la comision de una pasarela de pago. Vive y muere con
+  /// el pago que lo origino.
+  pagoId String? @unique
+  pago   Pago?   @relation("ComisionPasarela", fields: [pagoId], references: [id], onDelete: Cascade)
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -419,4 +480,46 @@ model MovimientoSocio {
   @@index([socioId])
   @@index([fecha])
   @@index([facturaId])
+}
+
+// ---------------------------------------------------------------------------
+// Suscripciones — servicios que se cobran de forma periodica
+// ---------------------------------------------------------------------------
+
+/// Un servicio recurrente contratado por un cliente: soporte mensual, licencia,
+/// mantenimiento. Es la plantilla desde la que se emite la factura de cada
+/// periodo, igual que GastoRecurrente lo es para los gastos fijos.
+model Suscripcion {
+  id String @id @default(cuid())
+
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  servicioId String
+  servicio   Servicio @relation(fields: [servicioId], references: [id])
+
+  /// Precio por periodo, sin IVA. Puede diferir del precio de catalogo: cada
+  /// cliente negocia el suyo.
+  monto Decimal @db.Decimal(16, 2)
+
+  periodicidad Periodicidad @default(MENSUAL)
+
+  /// Dia del mes en que toca facturar. Se limita a 28 para que exista siempre.
+  diaFacturacion Int @default(1)
+
+  /// Dias de plazo para pagar desde la emision.
+  diasPlazo Int @default(30)
+
+  fechaInicio DateTime
+  fechaFin    DateTime?
+  activo      Boolean   @default(true)
+  notas       String    @default("")
+
+  facturas Factura[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([clienteId])
+  @@index([servicioId])
 }

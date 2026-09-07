@@ -8,7 +8,7 @@ import { conReintento, esTransitorio } from "./reintento";
  * conexión que parece una caída pero no lo es. Se amplían los tiempos sin tocar
  * el .env, respetando lo que ya venga escrito en la cadena.
  */
-function urlConTiemposAmplios(): string | undefined {
+export function urlConTiemposAmplios(): string | undefined {
   const bruta = process.env.DATABASE_URL;
   if (!bruta) return undefined;
 
@@ -16,6 +16,16 @@ function urlConTiemposAmplios(): string | undefined {
     const url = new URL(bruta);
     if (!url.searchParams.has("connect_timeout")) url.searchParams.set("connect_timeout", "20");
     if (!url.searchParams.has("pool_timeout")) url.searchParams.set("pool_timeout", "20");
+
+    // Detras del pooler de Neon, las sentencias preparadas con nombre viven mas
+    // que la conexion logica: tras cambiar el esquema, Postgres devuelve
+    // "cached plan must not change result type" hasta que el pool se recicla, y
+    // eso le llega al usuario como un 500. `pgbouncer=true` hace que Prisma no
+    // las use.
+    if (url.hostname.includes("-pooler") && !url.searchParams.has("pgbouncer")) {
+      url.searchParams.set("pgbouncer", "true");
+    }
+
     return url.toString();
   } catch {
     // Si la cadena no se puede analizar, se usa tal cual y que Prisma reporte.

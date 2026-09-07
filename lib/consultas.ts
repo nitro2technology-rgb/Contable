@@ -361,6 +361,33 @@ export async function repartoPorProyecto(anio?: number): Promise<RepartoProyecto
   });
 }
 
+
+// ---------------------------------------------------------------------------
+// Suscripciones — ingreso recurrente
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingreso recurrente mensual: lo que entra cada mes sin tener que vender nada
+ * nuevo. Es la contraparte del costo fijo mensual, y la comparacion entre los
+ * dos dice si la operacion se sostiene sola.
+ */
+export async function ingresoRecurrenteMensual(): Promise<{
+  total: number;
+  suscripciones: number;
+}> {
+  const activas = await prisma.suscripcion.findMany({
+    where: { activo: true },
+    select: { monto: true, periodicidad: true },
+  });
+
+  let total = 0;
+  for (const s of activas) {
+    total += num(s.monto) / MESES_POR_PERIODO[s.periodicidad];
+  }
+
+  return { total, suscripciones: activas.length };
+}
+
 // ---------------------------------------------------------------------------
 // Gastos fijos mensuales
 // ---------------------------------------------------------------------------

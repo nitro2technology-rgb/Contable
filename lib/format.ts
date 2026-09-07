@@ -83,8 +83,19 @@ export function diasEntre(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
-/** Convierte un enum SCREAMING_SNAKE en texto legible: "LEGAL_CONTABLE" -> "Legal contable". */
+/**
+ * Convierte un enum SCREAMING_SNAKE en texto legible: "LEGAL_CONTABLE" ->
+ * "Legal contable". Las siglas se listan aparte porque la regla general las
+ * dejaria como "Ia" o "Apis".
+ */
+const SIGLAS: Record<string, string> = {
+  IA: "IA",
+  APIS: "APIs",
+  PSE: "PSE",
+};
+
 export function humanizar(valor: string): string {
+  if (SIGLAS[valor]) return SIGLAS[valor];
   const s = valor.replace(/_/g, " ").toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

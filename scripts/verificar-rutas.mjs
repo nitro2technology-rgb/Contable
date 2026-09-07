@@ -24,6 +24,7 @@ const RUTAS = [
   "/",
   "/facturas",
   "/facturas/nueva",
+  "/suscripciones",
   "/clientes",
   "/servicios",
   "/gastos",

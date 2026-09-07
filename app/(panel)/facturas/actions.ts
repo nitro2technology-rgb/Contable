@@ -6,7 +6,7 @@ import type { ConceptoRetefuente, TratamientoIva } from "@prisma/client";
 import type { EstadoAccion } from "@/components/dialog";
 import { num, prisma } from "@/lib/db";
 import { obtenerConfig } from "@/lib/consultas";
-import { calcularFactura, type LineaCalculo } from "@/lib/fiscal";
+import { calcularComision, calcularFactura, IVA_COMISION, type LineaCalculo } from "@/lib/fiscal";
 import { dinero, exito, fallo, fechaDe, opcion, texto } from "@/lib/formulario";
 
 const METODOS = [
@@ -170,7 +170,7 @@ export async function registrarPago(
 
   const factura = await prisma.factura.findUnique({
     where: { id: facturaId },
-    include: { pagos: { select: { monto: true } } },
+    include: { pagos: { select: { monto: true } }, cliente: { select: { nombre: true } } },
   });
   if (!factura) return fallo("La factura ya no existe.");
 
@@ -183,31 +183,87 @@ export async function registrarPago(
     );
   }
 
-  await prisma.pago.create({
-    data: {
-      facturaId,
-      fecha: fechaDe(d, "fecha"),
-      monto,
-      metodo: opcion(d, "metodo", METODOS, "TRANSFERENCIA"),
-      referencia: texto(d, "referencia"),
-      notas: texto(d, "notas"),
-    },
+  // La comision de la pasarela no reduce lo que abona el cliente a la factura:
+  // el cliente pago el monto completo. Reduce lo que llega a la cuenta, y eso
+  // es un gasto financiero de la empresa.
+  const pasarelaId = texto(d, "pasarelaId") || null;
+  let comision = 0;
+  let comisionIva = 0;
+  let nombrePasarela = "";
+
+  if (pasarelaId) {
+    const pasarela = await prisma.pasarelaPago.findUnique({ where: { id: pasarelaId } });
+    if (!pasarela) return fallo("La pasarela seleccionada ya no existe.");
+
+    nombrePasarela = pasarela.nombre;
+    const calculo = calcularComision(monto, {
+      porcentaje: num(pasarela.porcentaje),
+      fijo: num(pasarela.fijo),
+      comisionTieneIva: pasarela.comisionTieneIva,
+    });
+    comision = calculo.comision;
+    comisionIva = calculo.comisionIva;
+  }
+
+  const fecha = fechaDe(d, "fecha");
+
+  // Pago y gasto de comision se guardan juntos: si se escribieran por separado,
+  // un fallo a medias dejaria la utilidad sin el costo de cobrar.
+  await prisma.$transaction(async (tx) => {
+    const pago = await tx.pago.create({
+      data: {
+        facturaId,
+        fecha,
+        monto,
+        metodo: opcion(d, "metodo", METODOS, "TRANSFERENCIA"),
+        referencia: texto(d, "referencia"),
+        notas: texto(d, "notas"),
+        pasarelaId,
+        comision,
+        comisionIva,
+        neto: monto - comision - comisionIva,
+      },
+    });
+
+    if (comision > 0) {
+      await tx.gasto.create({
+        data: {
+          fecha,
+          concepto: `Comisión ${nombrePasarela} — ${factura.numero}`,
+          proveedor: nombrePasarela,
+          categoria: "BANCARIO",
+          base: comision,
+          tasaIva: comisionIva > 0 ? IVA_COMISION : 0,
+          ivaValor: comisionIva,
+          total: comision + comisionIva,
+          ivaDescontable: comisionIva > 0,
+          deducible: true,
+          notas: `Comisión de pasarela sobre el pago de ${factura.cliente.nombre}.`,
+          pagoId: pago.id,
+        },
+      });
+    }
   });
 
   await sincronizarEstado(facturaId);
 
   revalidatePath(`/facturas/${facturaId}`);
   revalidatePath("/facturas");
+  revalidatePath("/gastos");
+  revalidatePath("/impuestos");
   revalidatePath("/");
   return exito();
 }
 
 export async function eliminarPago(pagoId: string, facturaId: string) {
+  // El gasto de la comision cae en cascada con el pago.
   await prisma.pago.delete({ where: { id: pagoId } });
   await sincronizarEstado(facturaId);
 
   revalidatePath(`/facturas/${facturaId}`);
   revalidatePath("/facturas");
+  revalidatePath("/gastos");
+  revalidatePath("/impuestos");
   revalidatePath("/");
 }
 

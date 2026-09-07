@@ -27,16 +27,17 @@ export async function generateMetadata({
 export default async function DetalleFactura({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [factura, config] = await Promise.all([
+  const [factura, config, pasarelas] = await Promise.all([
     prisma.factura.findUnique({
       where: { id },
       include: {
         cliente: true,
         items: { orderBy: { orden: "asc" } },
-        pagos: { orderBy: { fecha: "desc" } },
+        pagos: { orderBy: { fecha: "desc" }, include: { pasarela: { select: { nombre: true } } } },
       },
     }),
     obtenerConfig(),
+    prisma.pasarelaPago.findMany({ where: { activo: true }, orderBy: { nombre: "asc" } }),
   ]);
 
   if (!factura) notFound();
@@ -79,7 +80,19 @@ export default async function DetalleFactura({ params }: { params: Promise<{ id:
             </form>
           ) : null}
 
-          {saldo > 0 && !anulada ? <DialogoPago facturaId={factura.id} saldo={saldo} /> : null}
+          {saldo > 0 && !anulada ? (
+            <DialogoPago
+              facturaId={factura.id}
+              saldo={saldo}
+              pasarelas={pasarelas.map((p) => ({
+                id: p.id,
+                nombre: p.nombre,
+                porcentaje: num(p.porcentaje),
+                fijo: num(p.fijo),
+                comisionTieneIva: p.comisionTieneIva,
+              }))}
+            />
+          ) : null}
 
           {!anulada ? (
             <form action={anularFactura.bind(null, factura.id)}>
@@ -174,8 +187,10 @@ export default async function DetalleFactura({ params }: { params: Promise<{ id:
                   <tr>
                     <Th>Fecha</Th>
                     <Th>Medio</Th>
-                    <Th>Referencia</Th>
+                    <Th>Pasarela</Th>
                     <Th numerico>Monto</Th>
+                    <Th numerico>Comisión</Th>
+                    <Th numerico>Neto</Th>
                     <Th />
                   </tr>
                 </thead>
@@ -184,9 +199,17 @@ export default async function DetalleFactura({ params }: { params: Promise<{ id:
                     <Tr key={p.id}>
                       <Td className="tabular text-ink-2">{fecha(p.fecha)}</Td>
                       <Td className="text-ink-2">{humanizar(p.metodo)}</Td>
-                      <Td className="text-ink-2">{p.referencia || "—"}</Td>
+                      <Td className="text-ink-2">{p.pasarela?.nombre ?? "—"}</Td>
                       <Td numerico className="font-medium">
                         {money(num(p.monto))}
+                      </Td>
+                      <Td numerico className={num(p.comision) > 0 ? "text-critical" : "text-ink-muted"}>
+                        {num(p.comision) > 0
+                          ? `−${money(num(p.comision) + num(p.comisionIva))}`
+                          : "—"}
+                      </Td>
+                      <Td numerico className="text-ink-2">
+                        {money(num(p.neto) || num(p.monto))}
                       </Td>
                       <Td>
                         <div className="flex justify-end no-print">

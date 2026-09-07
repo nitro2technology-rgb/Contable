@@ -16,8 +16,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
+import { urlConTiemposAmplios } from "../lib/db";
 
-const prisma = new PrismaClient();
+// Misma cadena que usa la aplicacion: incluye pgbouncer=true, sin el cual leer
+// una tabla recien alterada falla con "cached plan must not change result type".
+const url = urlConTiemposAmplios();
+const prisma = new PrismaClient(url ? { datasourceUrl: url } : undefined);
 
 /** Nombres fijos: nunca vienen de entrada externa. */
 const TABLAS = [

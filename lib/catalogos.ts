@@ -8,6 +8,7 @@
 export const CATEGORIAS_GASTO = [
   "SERVIDORES",
   "APIS",
+  "IA",
   "DOMINIOS",
   "SOFTWARE",
   "MARKETING",
